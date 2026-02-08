@@ -1,0 +1,4 @@
+volumes/
+*.env
+secrets/
+
