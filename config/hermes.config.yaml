@@ -1,0 +1,6 @@
+terminal:
+  backend: ssh
+  persistent_shell: true
+  # Pin shell to the agent-devbox user's home — without this, Hermes resolves
+  # cwd: . against its own /root and the SSH session as `ankit` can't cd there.
+  cwd: /home/ankit
