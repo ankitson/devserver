@@ -29,6 +29,7 @@ from pipeline_shared import (
     Notifier,
     XClientConfig,
     authorize_url,
+    backfill_from_raw,
     detect_anomalies_for_day,
     ensure_schema,
     exchange_code_for_tokens,
@@ -196,6 +197,15 @@ def cmd_x_exchange(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_x_backfill(args: argparse.Namespace) -> int:
+    """Recover users + bookmark order from already-cached raw_responses."""
+    cfg = _x_cfg()
+    s = load_settings()
+    counters = backfill_from_raw(s.database_url, cfg.account)
+    print(json.dumps(counters, indent=2))
+    return 0
+
+
 def cmd_x_bookmarks(args: argparse.Namespace) -> int:
     cfg = _x_cfg()
     s = load_settings()
@@ -237,6 +247,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("x-exchange")
     sp.add_argument("--code", required=True)
     sp.add_argument("--verifier", required=True)
+    sub.add_parser("x-backfill")
     sp = sub.add_parser("x-bookmarks")
     sp.add_argument("--pages", type=int, default=1)
     sp.add_argument("--no-threads", action="store_true")
@@ -257,6 +268,7 @@ HANDLERS = {
     "status": cmd_status,
     "x-init": cmd_x_init,
     "x-exchange": cmd_x_exchange,
+    "x-backfill": cmd_x_backfill,
     "x-bookmarks": cmd_x_bookmarks,
 }
 

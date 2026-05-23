@@ -109,12 +109,37 @@ CREATE TABLE IF NOT EXISTS x_media (
     fetched_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Tweet authors, from the API's includes.users expansion. The bookmarks
+-- endpoint returns these alongside tweets but we used to discard them, so a
+-- tweet's author was only a numeric author_id. Persist them so consumers can
+-- show real names/@handles without re-deriving from raw_responses.
+CREATE TABLE IF NOT EXISTS x_users (
+    id                 TEXT PRIMARY KEY,
+    username           TEXT,
+    name               TEXT,
+    profile_image_url  TEXT,
+    verified           BOOLEAN,
+    description        TEXT,
+    payload            JSONB,
+    fetched_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS x_bookmarks (
     account        TEXT NOT NULL,
     tweet_id       TEXT NOT NULL REFERENCES x_tweets(id) ON DELETE CASCADE,
+    -- First time WE observed this tweet bookmarked. X's API does not expose a
+    -- real "bookmarked at" timestamp, so this is a first-seen proxy: accurate
+    -- to the poll interval for anything bookmarked after ingestion begins.
     bookmarked_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    -- Position in the bookmark list at first sighting (0 = most recently
+    -- bookmarked). Preserves true bookmark order, which the timestamp alone
+    -- cannot for the bulk initial import.
+    sort_index     INTEGER,
     PRIMARY KEY (account, tweet_id)
 );
+
+-- Idempotent migration for tables created before sort_index existed.
+ALTER TABLE x_bookmarks ADD COLUMN IF NOT EXISTS sort_index INTEGER;
 """
 
 
@@ -291,6 +316,7 @@ class XClient:
                              "referenced_tweets,attachments,public_metrics",
             "expansions": "author_id,attachments.media_keys,referenced_tweets.id",
             "media.fields": "media_key,type,url,preview_image_url,variants",
+            "user.fields": "name,username,profile_image_url,verified,description",
         }
         if pagination_token:
             params["pagination_token"] = pagination_token
@@ -308,6 +334,7 @@ class XClient:
                              "referenced_tweets,attachments",
             "expansions": "author_id,attachments.media_keys,referenced_tweets.id",
             "media.fields": "media_key,type,url,preview_image_url,variants",
+            "user.fields": "name,username,profile_image_url,verified,description",
         }
         r = httpx.get(f"{X_API}/tweets", headers=self._headers(), params=params,
                       timeout=30.0)
@@ -394,6 +421,35 @@ def _upsert_media_rows(cur, includes: dict) -> None:
         )
 
 
+def _upsert_users(cur, includes: dict) -> int:
+    """Persist includes.users into x_users. Returns the number of users seen."""
+    users = includes.get("users") or []
+    for u in users:
+        cur.execute(
+            """
+            INSERT INTO x_users
+                (id, username, name, profile_image_url, verified, description,
+                 payload, fetched_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, NOW())
+            ON CONFLICT (id) DO UPDATE SET
+                username = EXCLUDED.username,
+                name = EXCLUDED.name,
+                -- keep an existing avatar/description if a later response omits
+                -- the field (older raw responses didn't request user.fields)
+                profile_image_url = COALESCE(EXCLUDED.profile_image_url,
+                                              x_users.profile_image_url),
+                verified = COALESCE(EXCLUDED.verified, x_users.verified),
+                description = COALESCE(EXCLUDED.description, x_users.description),
+                payload = EXCLUDED.payload,
+                fetched_at = NOW()
+            """,
+            (u["id"], u.get("username"), u.get("name"),
+             u.get("profile_image_url"), u.get("verified"),
+             u.get("description"), json.dumps(u)),
+        )
+    return len(users)
+
+
 def _best_variant_url(media: dict) -> str | None:
     variants = (media.get("variants") or [])
     if not variants:
@@ -432,7 +488,12 @@ def fetch_and_store_bookmarks(
     state = _load_state(settings.database_url, cfg.account)
     cursor = state.get("next_cursor")
     counters = {"pages": 0, "bookmarks_seen": 0, "new_tweets": 0,
-                "threads_pulled": 0, "quotes_pulled": 0, "media_indexed": 0}
+                "threads_pulled": 0, "quotes_pulled": 0, "media_indexed": 0,
+                "users_indexed": 0}
+    # Position within the bookmark list, in encounter order (0 = topmost =
+    # most recently bookmarked). Only applied on first sighting via the
+    # ON CONFLICT DO NOTHING below, so it records the original order.
+    ordinal = 0
 
     for _ in range(pages):
         _wait_for_bookmark_rate_limit(cfg.account, rate_limit_seconds)
@@ -451,18 +512,21 @@ def fetch_and_store_bookmarks(
         with psycopg.connect(settings.database_url) as conn, conn.cursor() as cur:
             _upsert_media_rows(cur, includes)
             counters["media_indexed"] += len(includes.get("media") or [])
+            counters["users_indexed"] += _upsert_users(cur, includes)
             for t in tweets:
                 cur.execute("SELECT 1 FROM x_tweets WHERE id = %s", (t["id"],))
                 is_new = cur.fetchone() is None
                 _upsert_tweet(cur, t, kind="bookmark")
                 cur.execute(
                     """
-                    INSERT INTO x_bookmarks (account, tweet_id, bookmarked_at)
-                    VALUES (%s, %s, NOW())
+                    INSERT INTO x_bookmarks
+                        (account, tweet_id, bookmarked_at, sort_index)
+                    VALUES (%s, %s, NOW(), %s)
                     ON CONFLICT DO NOTHING
                     """,
-                    (cfg.account, t["id"]),
+                    (cfg.account, t["id"], ordinal),
                 )
+                ordinal += 1
                 if is_new:
                     counters["new_tweets"] += 1
             conn.commit()
@@ -479,6 +543,7 @@ def fetch_and_store_bookmarks(
                                         kind="quote_lookup")
                     qincludes = rsp.get("includes") or {}
                     _upsert_media_rows(cur, qincludes)
+                    counters["users_indexed"] += _upsert_users(cur, qincludes)
                     for q in (rsp.get("data") or []):
                         _upsert_tweet(cur, q, kind="quoted")
                         counters["quotes_pulled"] += 1
@@ -570,3 +635,39 @@ def _save_state(database_url: str, account: str, next_cursor: str | None,
 def _chunks(seq, n):
     for i in range(0, len(seq), n):
         yield seq[i:i + n]
+
+
+def _as_obj(value) -> dict:
+    """raw_responses.response may come back as a parsed dict or a JSON string
+    depending on the column type / adapter — normalise to a dict."""
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, (str, bytes, bytearray)):
+        return json.loads(value)
+    return {}
+
+
+def backfill_from_raw(database_url: str, account: str = "default") -> dict:
+    """Recover author identities (x_users) that older fetches stored only in
+    raw_responses' includes.users — the data we used to discard.
+
+    Idempotent. Does NOT reconstruct x_bookmarks.sort_index: raw_responses keys
+    on (date, metric), so a same-day re-fetch overwrites a page's raw row,
+    leaving only a partial and misleading order. sort_index is therefore only
+    set live at fetch time; consumers fall back to tweet date when it's absent.
+
+    Avatars won't appear for rows whose raw response predates the user.fields
+    request — those fill in on the next live fetch.
+    """
+    ensure_x_schema(database_url)
+    counters = {"users_indexed": 0}
+    with psycopg.connect(database_url) as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT response FROM raw_responses WHERE metric LIKE %s",
+            (f"x_{account}_%",),
+        )
+        for (response,) in cur.fetchall():
+            payload = _as_obj(response)
+            counters["users_indexed"] += _upsert_users(cur, payload.get("includes") or {})
+        conn.commit()
+    return counters

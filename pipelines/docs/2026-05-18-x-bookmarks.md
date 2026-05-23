@@ -29,9 +29,32 @@ x_oauth_tokens     (account, access_token, refresh_token, expires_at, scopes)
 x_bookmarks_state  (account, next_cursor, last_fetched_at, last_completed_at)
 x_tweets           (id, author_id, conversation_id, text, kind,
                     referenced_tweet_id, referenced_kind, media_keys, payload)
+x_users            (id, username, name, profile_image_url, verified,
+                    description, payload)   -- from includes.users
 x_media            (media_key, type, url, preview_image_url, local_path)
-x_bookmarks        (account, tweet_id, bookmarked_at)
+x_bookmarks        (account, tweet_id, bookmarked_at, sort_index)
 ```
+
+**Authors (`x_users`)**: the API returns author objects in `includes.users`;
+they're upserted on every fetch so tweets resolve to real names/@handles
+(not just `author_id`). Avatars (`profile_image_url`) only fill in on fetches
+made after `user.fields` was added to the request params.
+
+**Bookmark order (`sort_index` + `bookmarked_at`)**: X exposes **no real
+"bookmarked at" timestamp**. `bookmarked_at` is a first-seen proxy (accurate
+to the poll interval for anything bookmarked after ingestion begins) and
+`sort_index` records the position in the bookmark list at first sighting
+(0 = most recent). Order by `bookmarked_at DESC, sort_index ASC`.
+
+**Backfill**: `pipeline-shared x-backfill` recovers `x_users` and `sort_index`
+from already-cached `raw_responses` (one-shot, idempotent). Note `sort_index`
+recovery is limited by `raw_responses` keying on `(date, metric)` — a same-day
+re-fetch overwrites a page's raw row, so only the surviving page's order is
+recoverable for the initial bulk; live fetches capture it correctly going forward.
+
+**Viewer**: a faithful read-only HTML view lives at
+`~/hroot/projects/x-bookmarks` (homeserver app-runner,
+`bookmarks.home.ankitson.com`).
 
 `raw_responses` also accumulates rows with metric=`x_<account>_<kind>` —
 mirrors the same cache-first contract we use for Garmin.
@@ -104,7 +127,7 @@ Template at `config/pipeline-dbos.env.tmpl`:
 ```
 X_OAUTH_CLIENT_ID={{ op://clankers/x/oauth-2-clientid }}
 X_OAUTH_CLIENT_SECRET={{ op://clankers/x/oauth-2-clientsecret }}
-X_OAUTH_REDIRECT_URI=http://localhost:18801/x-callback
+X_OAUTH_REDIRECT_URI=https://xscrape.dev.ankitson.com
 X_ACCOUNT=default
 X_BOOKMARK_RATE_LIMIT_SECONDS=960
 ```
