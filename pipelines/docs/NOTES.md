@@ -72,32 +72,15 @@
 
 ## Stuff we haven't done yet
 
-- **X / Twitter bookmarks pipeline** is wired into pipeline-shared + DBOS
-  but never end-to-end tested with real credentials. The OAuth flow is
-  manual:
-  ```
-  just rs                         # render secrets from 1Password
-  just pipeline-x-init dbos       # prints auth URL + PKCE verifier
-  # ...open URL, get redirected to /x-callback?code=...
-  just pipeline-x-exchange dbos <code> <verifier>
-  just pipeline-x-fetch dbos 1
-  ```
-  Rate limit is 1 request / 15 min so backfilling is slow. The hourly
-  scheduled tick in `pipeline-dbos/workflows.py:x_bookmarks_hourly` will
-  log "skipped" until tokens exist; once authenticated, it pulls one page
-  per hour.
-
-- **Dagster / Restate wrappers for X bookmarks** — only DBOS has it wired
-  through to a workflow. The library code in `pipeline_shared.x_bookmarks`
-  is orchestrator-agnostic, so adding equivalents is ~30 lines each.
+- **X / Twitter bookmarks** — the custom pipeline + viewer were removed
+  (archived at git tag `x-bookmarks-archive`). The plan is to adopt
+  [birdclaw](https://github.com/steipete/birdclaw) (CLI + webapp over its own
+  SQLite, using `xurl` for auth) instead of a hand-rolled fetcher. Not yet set up.
 
 - **ntfy push** — code is in place, but `NTFY_TOPIC` is empty in all
   secrets templates so anomaly notifications stay in the `notifications`
   table only. Set the topic + (optional) token in
   `secrets/pipeline-dagster.env` to enable phone push.
-
-- **Media download for X bookmarks** — currently we index `x_media`
-  with URLs only; downloading bytes to a volume is not done.
 
 - **`activities` cache** is independent of the 7 metrics and uses a
   read-only fall-through to source `garmin.raw_responses`. If you want

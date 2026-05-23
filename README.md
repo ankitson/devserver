@@ -1,7 +1,7 @@
 # devserver
 
 Docker stack for the dev server — data pipelines (Garmin / banking / Playnite /
-AoE4-replay / X-bookmarks on Dagster, plus DBOS / Restate experiments) and
+AoE4-replay on Dagster, plus DBOS / Restate experiments) and
 supporting services.
 
 ## Docs

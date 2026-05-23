@@ -1,5 +1,13 @@
 # Devserver Changelog
 
+## 2026-05-23 — Removed custom X/Twitter bookmarks pipeline + viewer
+Retired the hand-rolled X bookmarks stack (`pipeline_shared.x_bookmarks`, the
+DBOS workflow/schedule/endpoints, the `x_*` Postgres tables, the `x-*` CLI
+subcommands, and the standalone Bun viewer at `bookmarks.home.ankitson.com`).
+Superseded by the plan to adopt [birdclaw](https://github.com/steipete/birdclaw)
+(CLI + webapp over its own SQLite, auth via `xurl`). The full implementation is
+preserved in git at tag **`x-bookmarks-archive`**.
+
 ## 2026-05-18 / 2026-05-19 — Data pipelines build-out
 
 ### Planning (2026-05-18)
@@ -129,7 +137,6 @@ Settled on Dagster as the live pipeline. Tightened it up for real use.
 - `2026-05-18-pipeline-{dagster,restate,dbos}.md` — per-tool plans.
 - `2026-05-18-pipelines-verification.md` — what was built + how to test.
 - `2026-05-18-inspecting-pipelines.md` — UIs + SQL recipes.
-- `2026-05-18-x-bookmarks.md` — X/Twitter ingestion design.
 
 ### Minimal upstream change
 - Added a 5-line `[build-system]` + `[tool.hatch]` block to

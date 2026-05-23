@@ -253,57 +253,6 @@ async def _bank_log_finish_step(
         )
 
 
-# --- X (Twitter) bookmarks ----------------------------------------------
-
-
-@DBOS.step(retries_allowed=True, max_attempts=3, interval_seconds=60.0)
-def fetch_x_bookmarks_step(pages: int, no_threads: bool, no_quotes: bool) -> dict:
-    """A single durable step that pulls one or more bookmark pages.
-
-    Rate limited via pipeline_shared._wait_for_bookmark_rate_limit (16 min
-    floor between page calls). The DBOS step's own retry policy is 1 min
-    apart, capped at 3 attempts — for the case where X returns 5xx, NOT for
-    rate-limit recovery.
-    """
-    import os
-    from pipeline_shared import fetch_and_store_bookmarks
-    from pipeline_shared.x_bookmarks import XClientConfig
-    s = _settings()
-    cfg = XClientConfig(
-        client_id=os.environ["X_OAUTH_CLIENT_ID"],
-        client_secret=os.environ["X_OAUTH_CLIENT_SECRET"],
-        redirect_uri=os.environ.get(
-            "X_OAUTH_REDIRECT_URI", "http://localhost:18801/x-callback"
-        ),
-        account=os.environ.get("X_ACCOUNT", "default"),
-    )
-    rate = float(os.environ.get("X_BOOKMARK_RATE_LIMIT_SECONDS", "960"))
-    return fetch_and_store_bookmarks(
-        settings=s, cfg=cfg, pages=pages, rate_limit_seconds=rate,
-        resolve_threads=not no_threads, resolve_quotes=not no_quotes,
-    )
-
-
-@DBOS.workflow()
-def fetch_x_bookmarks_workflow(
-    pages: int = 1, no_threads: bool = False, no_quotes: bool = False,
-) -> dict:
-    return fetch_x_bookmarks_step(pages, no_threads, no_quotes)
-
-
-# Scheduled — once an hour by default. X bookmark endpoint rate limit makes
-# anything faster pointless; the actual API call is gated by the in-process
-# limiter inside fetch_and_store_bookmarks too.
-@DBOS.scheduled("0 * * * *")
-@DBOS.workflow()
-def x_bookmarks_hourly(scheduled_time, actual_time) -> dict:
-    try:
-        return fetch_x_bookmarks_step(pages=1, no_threads=False, no_quotes=False)
-    except Exception as e:  # noqa: BLE001
-        log.warning("x_bookmarks_hourly failed (likely no tokens yet): %s", e)
-        return {"status": "skipped", "error": str(e)}
-
-
 @DBOS.workflow()
 async def import_bank_statement(
     bank_name: str,

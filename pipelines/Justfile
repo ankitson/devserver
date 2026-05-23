@@ -1,4 +1,4 @@
-# Pipeline-specific commands (Garmin / banking / X-bookmarks / landing-zone).
+# Pipeline-specific commands (Garmin / banking / landing-zone).
 # Reachable from devserver root via `just pipelines <recipe>` (mod import) or
 # directly with `cd pipelines && just <recipe>`.
 #
@@ -73,21 +73,6 @@ bank-import-restate:
       -d '{"bank_name":"mock-bank","username":"ankit","password":"test"}'
   @echo
   @echo "  → approval url printed in notifications table (kind='bank:otp_required')"
-
-# ── X (Twitter) bookmarks ─────────────────────────────────────────
-# Print the authorize URL + PKCE verifier (run on host or inside any pipeline
-# container). Save the verifier — you'll need it for `pipeline-x-exchange`.
-pipeline-x-init pipeline="dbos":
-  docker exec pipeline-{{pipeline}} bash -lc \
-    "cd /app/shared && uv run pipeline-shared x-init"
-
-pipeline-x-exchange pipeline="dbos" code="" verifier="":
-  docker exec pipeline-{{pipeline}} bash -lc \
-    "cd /app/shared && uv run pipeline-shared x-exchange --code {{code}} --verifier {{verifier}}"
-
-pipeline-x-fetch pipeline="dbos" pages="1":
-  docker exec pipeline-{{pipeline}} bash -lc \
-    "cd /app/shared && uv run pipeline-shared x-bookmarks --pages {{pages}}"
 
 # ── landing_zone (file-drop pipelines) ────────────────────────────
 # Host path of the landing zone — the network mount bound into pipeline-dagster

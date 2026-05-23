@@ -105,7 +105,6 @@ def _nav(active: str = "") -> str:
         ("/transactions", "Transactions"),
         ("/anomalies", "Anomalies"),
         ("/notifications", "Notifications"),
-        ("/x-status", "X bookmarks"),
     ]
     links = " · ".join(
         f'<a href="{href}" style="{"color:white" if href==active else ""}">{label}</a>'
@@ -261,12 +260,6 @@ def index() -> str:
           <input name="username" value="ankit"/>
           <input name="password" value="test"/>
           <button type="submit">import</button>
-        </form>
-        <br/><br/>
-        <h2>Trigger X bookmarks</h2>
-        <form method="post" action="/trigger/x_bookmarks" class="inline">
-          <input name="pages" value="1"/>
-          <button type="submit">fetch</button>
         </form>
       </div>
     </section>
@@ -519,59 +512,6 @@ def notifications() -> str:
     </section>
     """
     return _page("pipeline-dbos · notifications", body, "/notifications")
-
-
-# --- X OAuth callback + trigger ----------------------------------------
-
-@app.get("/x-callback", response_class=HTMLResponse)
-def x_callback(code: str = "", state: str = "", error: str = "") -> str:
-    if error:
-        return f"<p>X authorize failed: <code>{error}</code></p>"
-    if not code:
-        return "<p>missing ?code in callback</p>"
-    return f"""
-    <h2>X authorize callback</h2>
-    <p>Captured code: <code>{code}</code></p>
-    <p>State: <code>{state}</code></p>
-    <p>Now run inside the container:</p>
-    <pre>just pipeline-x-exchange dbos &lt;code&gt; &lt;verifier-from-x-init&gt;</pre>
-    """
-
-
-@app.post("/trigger/x_bookmarks")
-def trigger_x_bookmarks(pages: int = Form(1)) -> JSONResponse:
-    from pipeline_dbos.workflows import fetch_x_bookmarks_workflow
-    h = DBOS.start_workflow(fetch_x_bookmarks_workflow, pages)
-    return JSONResponse({"workflow_id": h.workflow_id})
-
-
-@app.get("/x-status", response_class=HTMLResponse)
-def x_status() -> str:
-    with psycopg.connect(_settings_at_boot.database_url) as conn, conn.cursor() as cur:
-        try:
-            cur.execute("SELECT COUNT(*) FROM x_tweets")
-            tweet_count = cur.fetchone()[0]
-        except Exception:
-            tweet_count = "(table missing — call /trigger/x_bookmarks first)"
-            conn.rollback()
-        try:
-            cur.execute(
-                "SELECT account, last_fetched_at, last_completed_at, next_cursor "
-                "FROM x_bookmarks_state"
-            )
-            state_rows = cur.fetchall()
-        except Exception:
-            state_rows = []
-            conn.rollback()
-    lines = [f"<p>x_tweets count: {tweet_count}</p>",
-             "<h3>state</h3><table border=1 cellpadding=4>"]
-    lines.append("<tr><th>account</th><th>last_fetched</th>"
-                 "<th>last_completed</th><th>next_cursor</th></tr>")
-    for r in state_rows:
-        lines.append(f"<tr><td>{r[0]}</td><td>{r[1]}</td>"
-                     f"<td>{r[2]}</td><td>{r[3] or ''}</td></tr>")
-    lines.append("</table>")
-    return "".join(lines)
 
 
 @app.get("/transactions", response_class=HTMLResponse)

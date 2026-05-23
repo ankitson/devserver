@@ -39,20 +39,6 @@ from pipeline_shared.banking import (
 from pipeline_shared.gameactivity import import_batch as gameactivity_import_batch
 from pipeline_shared.gameactivity import parse_game_file as gameactivity_parse_game_file
 from pipeline_shared.seed import seed_raw_responses_from_garmin
-from pipeline_shared.x_bookmarks import (
-    XClient,
-    XClientConfig,
-    authorize_url,
-    backfill_from_raw,
-    ensure_x_schema,
-    exchange_code_for_tokens,
-    fetch_and_store_bookmarks,
-    load_tokens,
-    make_pkce_pair,
-    refresh_tokens,
-    save_tokens,
-)
-
 __all__ = [
     "Settings",
     "load_settings",
@@ -77,15 +63,4 @@ __all__ = [
     "seed_raw_responses_from_garmin",
     "gameactivity_import_batch",
     "gameactivity_parse_game_file",
-    "XClient",
-    "XClientConfig",
-    "authorize_url",
-    "backfill_from_raw",
-    "ensure_x_schema",
-    "exchange_code_for_tokens",
-    "fetch_and_store_bookmarks",
-    "load_tokens",
-    "make_pkce_pair",
-    "refresh_tokens",
-    "save_tokens",
 ]

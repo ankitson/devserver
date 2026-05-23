@@ -27,18 +27,11 @@ from pipeline_shared import (
     GarminRun,
     METRIC_NAMES,
     Notifier,
-    XClientConfig,
-    authorize_url,
-    backfill_from_raw,
     detect_anomalies_for_day,
     ensure_schema,
-    exchange_code_for_tokens,
-    fetch_and_store_bookmarks,
     load_settings,
-    make_pkce_pair,
     refresh_derived_for_day,
     reparse_day,
-    save_tokens,
     seed_raw_responses_from_garmin,
 )
 from pipeline_shared.seed import list_available_dates
@@ -157,72 +150,6 @@ def cmd_status(args: argparse.Namespace) -> int:
     return 0
 
 
-def _x_cfg() -> XClientConfig:
-    cid = os.environ.get("X_OAUTH_CLIENT_ID")
-    csec = os.environ.get("X_OAUTH_CLIENT_SECRET")
-    redir = os.environ.get("X_OAUTH_REDIRECT_URI",
-                           "http://localhost:18801/x-callback")
-    account = os.environ.get("X_ACCOUNT", "default")
-    if not cid or not csec:
-        raise RuntimeError("Set X_OAUTH_CLIENT_ID / X_OAUTH_CLIENT_SECRET")
-    return XClientConfig(client_id=cid, client_secret=csec, redirect_uri=redir,
-                         account=account)
-
-
-def cmd_x_init(args: argparse.Namespace) -> int:
-    """Print the X OAuth authorize URL + PKCE verifier. Save the verifier!
-    You'll need it when calling `x-exchange`."""
-    cfg = _x_cfg()
-    verifier, _ = make_pkce_pair()
-    url = authorize_url(cfg, verifier)
-    print("=" * 70)
-    print("1. Open this URL in a browser logged in to your X account:")
-    print(url)
-    print()
-    print("2. Authorize the app. You will be redirected to:")
-    print(f"   {cfg.redirect_uri}?code=...&state=...")
-    print()
-    print("3. Copy the `code` value from the URL, then run:")
-    print(f"   pipeline-shared x-exchange --code <code> --verifier {verifier}")
-    print("=" * 70)
-    return 0
-
-
-def cmd_x_exchange(args: argparse.Namespace) -> int:
-    cfg = _x_cfg()
-    tokens = exchange_code_for_tokens(cfg, args.code, args.verifier)
-    s = load_settings()
-    save_tokens(s.database_url, cfg.account, tokens)
-    print(f"saved tokens for account '{cfg.account}'")
-    return 0
-
-
-def cmd_x_backfill(args: argparse.Namespace) -> int:
-    """Recover users + bookmark order from already-cached raw_responses."""
-    cfg = _x_cfg()
-    s = load_settings()
-    counters = backfill_from_raw(s.database_url, cfg.account)
-    print(json.dumps(counters, indent=2))
-    return 0
-
-
-def cmd_x_bookmarks(args: argparse.Namespace) -> int:
-    cfg = _x_cfg()
-    s = load_settings()
-    rate = float(os.environ.get("X_BOOKMARK_RATE_LIMIT_SECONDS", "960"))
-    counters = fetch_and_store_bookmarks(
-        settings=s, cfg=cfg, pages=args.pages,
-        rate_limit_seconds=rate,
-        resolve_threads=not args.no_threads,
-        resolve_quotes=not args.no_quotes,
-    )
-    print(json.dumps(counters, indent=2))
-    return 0
-
-
-import os  # noqa: E402 — used by _x_cfg / cmd_x_bookmarks
-
-
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="pipeline-shared")
     p.add_argument("--tool", default="shared",
@@ -243,16 +170,6 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("dates")
     sub.add_parser("status")
 
-    sub.add_parser("x-init")
-    sp = sub.add_parser("x-exchange")
-    sp.add_argument("--code", required=True)
-    sp.add_argument("--verifier", required=True)
-    sub.add_parser("x-backfill")
-    sp = sub.add_parser("x-bookmarks")
-    sp.add_argument("--pages", type=int, default=1)
-    sp.add_argument("--no-threads", action="store_true")
-    sp.add_argument("--no-quotes", action="store_true")
-
     return p
 
 
@@ -266,10 +183,6 @@ HANDLERS = {
     "notify": cmd_notify,
     "dates": cmd_dates,
     "status": cmd_status,
-    "x-init": cmd_x_init,
-    "x-exchange": cmd_x_exchange,
-    "x-backfill": cmd_x_backfill,
-    "x-bookmarks": cmd_x_bookmarks,
 }
 
 

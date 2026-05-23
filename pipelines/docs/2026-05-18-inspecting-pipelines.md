@@ -8,7 +8,7 @@ same URLs work remotely.
 
 | Pipeline | What | URL |
 |---|---|---|
-| DBOS | custom dashboard (data + workflows + anomalies + txns + X bookmarks) | http://localhost:18801 |
+| DBOS | custom dashboard (data + workflows + anomalies + txns) | http://localhost:18801 |
 | Dagster | native Dagit UI (assets, runs, partitions, schedules, sensors) | http://localhost:18802 |
 | Restate | native Restate admin UI (services, deployments, invocations) | http://localhost:18803/ui/ |
 | Mock bank | login + statements page (test only) | http://mock-bank:8000 (Docker network only) |
@@ -30,7 +30,7 @@ All pages share a top navbar.
   derived_daily, anomalies, raw cache), transaction summary by status,
   undelivered notifications, DBOS workflow status counts, and the last 10
   failures from `pipeline_runs`. One-click forms to trigger Garmin
-  `fetch_day`/`fetch_window`, bank import, X bookmarks fetch.
+  `fetch_day`/`fetch_window` and bank import.
 - **`/runs`** — Filterable list of DBOS workflows (workflow_uuid, status,
   name, error). Reads from `pipeline_dbos_dbos_sys.dbos.workflow_status`.
   Filters: `?name=&status=PENDING|SUCCESS|ERROR&limit=N`.
@@ -39,8 +39,6 @@ All pages share a top navbar.
 - **`/anomalies`** — Last 100 detected anomalies (date, metric, kind,
   severity, value, baseline, z-score, rule).
 - **`/notifications`** — Last 100 notification rows with delivery status.
-- **`/x-status`** — Tweet count + bookmark state (last_fetched_at,
-  next_cursor) per account.
 
 Trigger endpoints (POST forms on the dashboard):
 
@@ -50,7 +48,6 @@ Trigger endpoints (POST forms on the dashboard):
 /trigger/derive           date=…
 /trigger/detect           date=…
 /trigger/bank_import      bank_name=mock-bank username=… password=…
-/trigger/x_bookmarks      pages=N
 ```
 
 ## Dagster (port 18802)
