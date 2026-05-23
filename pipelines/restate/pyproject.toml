@@ -1,0 +1,28 @@
+[project]
+name = "pipeline-restate"
+version = "0.1.0"
+description = "Restate implementation of the Garmin + banking pipeline"
+requires-python = ">=3.14"
+dependencies = [
+    "restate-sdk>=0.7",
+    "hypercorn>=0.17",
+    "pipeline-shared",
+    "playwright>=1.45",
+    "httpx>=0.27",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "python-multipart>=0.0.9",
+]
+
+[project.scripts]
+pipeline-restate-app = "pipeline_restate_proj.entry:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv.sources]
+pipeline-shared = { path = "../shared" }
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pipeline_restate_proj"]

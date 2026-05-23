@@ -1,0 +1,142 @@
+services:
+  # Shared mock bank — single instance, all 3 pipelines hit it.
+  mock-bank:
+    build:
+      context: ./pipelines/mock-bank
+      dockerfile: Dockerfile
+    container_name: mock-bank
+    restart: unless-stopped
+    networks: [default]
+    environment:
+      PORT: "8000"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request,sys;urllib.request.urlopen(\"http://localhost:8000/healthz\",timeout=2).read()'"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  # Restate server — Rust binary, embedded RocksDB.
+  restate-server:
+    image: docker.restate.dev/restatedev/restate:latest
+    container_name: restate-server
+    restart: unless-stopped
+    networks: [default]
+    volumes:
+      - ./volumes/restate-data:/restate-data
+    environment:
+      RESTATE_NODE_NAME: pipeline-restate-node
+      RESTATE_LOG_FORMAT: pretty
+    ports:
+      - "${RESTATE_ADMIN_PORT:-18803}:9070"
+      - "${RESTATE_INGRESS_PORT:-18883}:8080"
+    healthcheck:
+      test: ["CMD", "/restate-cli", "config", "--help"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # Restate SDK app + FastAPI approval sidecar.
+  pipeline-restate:
+    build:
+      context: ./pipelines
+      dockerfile: restate/Dockerfile
+      additional_contexts:
+        garmin-fetch: /projects/garmin-fetch
+    container_name: pipeline-restate
+    restart: unless-stopped
+    networks: [default]
+    env_file:
+      - ./secrets/pipeline-restate.env
+    depends_on:
+      mock-bank:
+        condition: service_healthy
+      restate-server:
+        condition: service_started
+    ports:
+      - "${PIPELINE_RESTATE_APPROVE_PORT:-18813}:8001"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request;urllib.request.urlopen(\"http://localhost:8001/healthz\",timeout=2).read()'"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+      start_period: 25s
+
+  # Dagster pipeline — `dagster dev` + FastAPI approval sidecar.
+  pipeline-dagster:
+    build:
+      context: ./pipelines
+      dockerfile: dagster/Dockerfile
+      additional_contexts:
+        garmin-fetch: /projects/garmin-fetch
+    container_name: pipeline-dagster
+    restart: unless-stopped
+    networks: [default]
+    env_file:
+      - ./secrets/pipeline-dagster.env
+    environment:
+      # Path inside the container of the bind-mounted landing_zone below.
+      # Set here (in addition to the .env.tmpl) so a stale rendered .env
+      # without this key still works.
+      LANDING_ZONE_DIR: /landing_zone
+    depends_on:
+      mock-bank:
+        condition: service_healthy
+    ports:
+      - "${PIPELINE_DAGSTER_PORT:-18802}:3000"
+      - "${PIPELINE_DAGSTER_APPROVE_PORT:-18812}:8001"
+    volumes:
+      # Persist Garmin auth tokens across container restarts so the pipeline
+      # avoids repeated logins (which can trip CAPTCHA).
+      - dagster-garth:/root/.garth
+      - dagster-garminconnect:/root/.garminconnect
+      # Persist Dagster state (run history, schedule on/off, backfill state)
+      # across image rebuilds. Without this, every `up -d --build` would lose
+      # in-flight backfills + schedule status.
+      - dagster-home:/app/dagster/.dagster_home
+      # File-drop landing zone (clients on other machines mv files in here;
+      # sensors pick them up). See landing_zone/README.md for the contract.
+      - /mnt/synologydrive/docs-root/projects/data-dropbox:/landing_zone
+      - /mnt/synologydrive/docs-root/gaming-backups/aoe4-replays:/aoe4-replays
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request;urllib.request.urlopen(\"http://localhost:3000/server_info\",timeout=2).read()'"]
+      interval: 20s
+      timeout: 5s
+      retries: 8
+      start_period: 60s
+
+  # DBOS pipeline — single container, FastAPI + DBOS workflow runtime.
+  pipeline-dbos:
+    build:
+      context: ./pipelines
+      dockerfile: dbos/Dockerfile
+      additional_contexts:
+        garmin-fetch: /projects/garmin-fetch
+      args: {}
+    container_name: pipeline-dbos
+    restart: unless-stopped
+    networks: [default]
+    env_file:
+      - ./secrets/pipeline-dbos.env
+    depends_on:
+      mock-bank:
+        condition: service_healthy
+    ports:
+      - "${PIPELINE_DBOS_PORT:-18801}:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request;urllib.request.urlopen(\"http://localhost:8000/healthz\",timeout=2).read()'"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
+
+volumes:
+  dagster-garth:
+  dagster-garminconnect:
+  dagster-home:
+
+networks:
+  default:
+    name: mybridge
+    external: true

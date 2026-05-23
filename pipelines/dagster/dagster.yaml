@@ -1,0 +1,31 @@
+# Dagster instance config — copied into DAGSTER_HOME by entry.py on boot.
+#
+# Tag-based queue concurrency: any run whose tags include
+# `dagster/concurrency_key=garmin_api` is serialised through the
+# QueuedRunCoordinator. The asset op_tags propagate to the run for asset
+# backfills, so a 138-partition backfill of our raw_* assets executes as
+# 138 sequential runs — no parallel Garmin logins.
+#
+# Combined with `executor=in_process_executor` on Definitions, each run uses
+# exactly one process and one GarminClient login.
+
+run_coordinator:
+  module: dagster._core.run_coordinator
+  class: QueuedRunCoordinator
+  config:
+    max_concurrent_runs: 4
+    tag_concurrency_limits:
+      - key: dagster/concurrency_key
+        value: garmin_api
+        limit: 1
+      # File-copy pipelines tag runs with landing_copy=<pipeline>. Limit 1 per
+      # unique value so two batches of the SAME pipeline never copy into the
+      # same destination concurrently (which races on same-named files like
+      # catalog.json). Different copy pipelines still run in parallel.
+      - key: landing_copy
+        value:
+          applyLimitPerUniqueValue: true
+        limit: 1
+
+telemetry:
+  enabled: false

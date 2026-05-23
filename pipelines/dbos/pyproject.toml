@@ -1,0 +1,28 @@
+[project]
+name = "pipeline-dbos"
+version = "0.1.0"
+description = "DBOS implementation of the Garmin + banking pipeline"
+requires-python = ">=3.14"
+dependencies = [
+    "dbos>=1.18",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "pipeline-shared",
+    "playwright>=1.45",
+    "httpx>=0.27",
+    "jinja2>=3.1",
+    "python-multipart>=0.0.9",
+]
+
+[project.scripts]
+pipeline-dbos = "pipeline_dbos.main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv.sources]
+pipeline-shared = { path = "../shared" }
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pipeline_dbos"]
