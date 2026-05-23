@@ -1,4 +1,13 @@
+# Secrets & local data
 volumes/
-*.env
 secrets/
+.env
 
+# Editor / local tooling
+.vscode
+.claude/settings.local.json
+
+# Python
+__pycache__/
+*.pyc
+.venv/
