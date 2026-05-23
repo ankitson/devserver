@@ -51,8 +51,89 @@ services:
     tty: true
     init: true
     entrypoint: ["node", "dist/index.js"]
+
+  # ── LiteLLM Gateway ─────────────────────────────────────────────
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    restart: unless-stopped
+    depends_on:
+      litellm-db:
+        condition: service_healthy
+    env_file:
+      - ./secrets/litellm.env
+    volumes:
+      - ./config/litellm.yaml:/app/config.yaml:ro
+    ports:
+      - "${LITELLM_PORT:-4000}:4000"
+    command:
+      [
+        "--config", "/app/config.yaml",
+        "--port", "4000",
+        "--detailed_debug",
+      ]
+  litellm-db:
+    image: postgres:16-alpine
+    container_name: litellm-db
+    restart: unless-stopped
+    env_file:
+      - ./config/litellm-db.env
+      - ./secrets/litellm.env
+    volumes:
+      - litellm_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "litellm"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ── Agent sandbox: devbox-image container that Hermes drives over SSH ──────
+  agent-devbox:
+    image: ankit/devbox:1.3
+    container_name: agent-devbox
+    hostname: agent-devbox
+    env_file:
+      - ./secrets/agent-devbox.env       # OP_SERVICE_ACCOUNT_TOKEN, rendered from config/
+    volumes:
+      - agent_devbox_home:/home/ankit
+      - /projects:/projects:ro
+    restart: unless-stopped
+    shm_size: 2g
+    security_opt:
+      - seccomp:unconfined
+    # GPU — remove this block if you don't want the agent on CUDA
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # ── Hermes agent: LLM agent loop, SSH-backend execution targets agent-devbox ─
+  hermes:
+    image: nousresearch/hermes-agent:main
+    container_name: hermes
+    hostname: hermes
+    command: gateway run
+    restart: unless-stopped
+    depends_on:
+      - agent-devbox
+    environment:
+      - HERMES_DASHBOARD=1
+    # No host port bindings — homeserver Caddy proxies via mybridge.
+    # Uncomment for local debug without Caddy:
+    # ports:
+    #   - "127.0.0.1:8642:8642"
+    #   - "127.0.0.1:9119:9119"
+    volumes:
+      - ./volumes/hermes:/opt/data
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
 volumes:
   openclaw_home:
+  litellm_pgdata:
+  agent_devbox_home:
 networks:
   default:
     name: mybridge
