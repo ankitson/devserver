@@ -1,0 +1,137 @@
+# LiteLLM Proxy Configuration
+# Explicit model entries for each provider. Clients request models by their
+# model_name (e.g. "gpt-4.1", "claude-sonnet-4") and the proxy forwards to
+# the real provider, logging every request.
+
+model_list:
+  # ── OpenAI ───────────────────────────────────────────────────────
+  - model_name: "gpt-4.1"
+    litellm_params:
+      model: "gpt-4.1"
+      api_key: os.environ/OPENAI_API_KEY
+  - model_name: "gpt-4.1-mini"
+    litellm_params:
+      model: "gpt-4.1-mini"
+      api_key: os.environ/OPENAI_API_KEY
+  - model_name: "o3"
+    litellm_params:
+      model: "o3"
+      api_key: os.environ/OPENAI_API_KEY
+  - model_name: "o4-mini"
+    litellm_params:
+      model: "o4-mini"
+      api_key: os.environ/OPENAI_API_KEY
+
+  # ── Anthropic ────────────────────────────────────────────────────
+  - model_name: "claude-sonnet-4-5-20250929"
+    litellm_params:
+      model: "claude-sonnet-4-5-20250929"
+  - model_name: "claude-opus-4-5-20251101"
+    litellm_params:
+      model: "claude-opus-4-5-20251101"
+  - model_name: "claude-haiku-4-5-20251001"
+    litellm_params:
+      model: "claude-haiku-4-5-20251001"
+  - model_name: "claude-sonnet-4-20250514"
+    litellm_params:
+      model: "claude-sonnet-4-20250514"
+
+  # ── Google Gemini ────────────────────────────────────────────────
+  - model_name: "gemini-2.5-pro"
+    litellm_params:
+      model: "gemini/gemini-2.5-pro"
+      api_key: os.environ/GEMINI_API_KEY
+  - model_name: "gemini-2.5-flash"
+    litellm_params:
+      model: "gemini/gemini-2.5-flash"
+      api_key: os.environ/GEMINI_API_KEY
+  - model_name: "gemini-3-pro-preview"
+    litellm_params:
+      model: "gemini/gemini-3-pro-preview"
+      api_key: os.environ/GEMINI_API_KEY
+  - model_name: "gemini-3-flash-preview"
+    litellm_params:
+      model: "gemini/gemini-3-flash-preview"
+      api_key: os.environ/GEMINI_API_KEY
+
+  # ── Groq ─────────────────────────────────────────────────────────
+  - model_name: "llama-3.3-70b-versatile"
+    litellm_params:
+      model: "groq/llama-3.3-70b-versatile"
+      api_key: os.environ/GROQ_API_KEY
+  - model_name: "llama-4-scout-17b-16e-instruct"
+    litellm_params:
+      model: "groq/meta-llama/llama-4-scout-17b-16e-instruct"
+      api_key: os.environ/GROQ_API_KEY
+  - model_name: "llama-4-maverick-17b-128e-instruct"
+    litellm_params:
+      model: "groq/meta-llama/llama-4-maverick-17b-128e-instruct"
+      api_key: os.environ/GROQ_API_KEY
+  - model_name: "qwen3-32b"
+    litellm_params:
+      model: "groq/qwen/qwen3-32b"
+      api_key: os.environ/GROQ_API_KEY
+
+  # ── Mistral ──────────────────────────────────────────────────────
+  - model_name: "mistral-large-latest"
+    litellm_params:
+      model: "mistral/mistral-large-latest"
+      api_key: os.environ/MISTRAL_API_KEY
+  - model_name: "codestral-latest"
+    litellm_params:
+      model: "mistral/codestral-latest"
+      api_key: os.environ/MISTRAL_API_KEY
+  - model_name: "magistral-medium-latest"
+    litellm_params:
+      model: "mistral/magistral-medium-latest"
+      api_key: os.environ/MISTRAL_API_KEY
+  - model_name: "voxtral-mini-transcribe-realtime-2602"
+    litellm_params:
+      model: "mistral/voxtral-mini-transcribe-realtime-2602"
+      api_key: os.environ/MISTRAL_API_KEY
+
+  # ── DeepSeek ─────────────────────────────────────────────────────
+  - model_name: "deepseek-chat"
+    litellm_params:
+      model: "deepseek/deepseek-chat"
+      api_key: os.environ/DEEPSEEK_API_KEY
+  - model_name: "deepseek-reasoner"
+    litellm_params:
+      model: "deepseek/deepseek-reasoner"
+      api_key: os.environ/DEEPSEEK_API_KEY
+
+  # ── OpenRouter (wildcard — meta-provider with 100s of models) ───
+  - model_name: "openrouter/*"
+    litellm_params:
+      model: "openrouter/*"
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  # ── OpenCode Zen ─────────────────────────────────────────────────
+  - model_name: "opencode/kimi-k2.5"
+    litellm_params:
+      model: "openai/kimi-k2.5"
+      api_base: "https://opencode.ai/zen/v1"
+      api_key: os.environ/OPENCODE_API_KEY
+  - model_name: "kimi-k2.5"
+    litellm_params:
+      model: "openai/kimi-k2.5"
+      api_base: "https://opencode.ai/zen/v1"
+      api_key: os.environ/OPENCODE_API_KEY
+
+litellm_settings:
+  drop_params: true
+  num_retries: 2
+  request_timeout: 300
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+
+  # PostgreSQL for persistent request/spend logging + UI
+  database_url: os.environ/DATABASE_URL
+
+  # Enable detailed request logging (stored in LiteLLM_SpendLogs table)
+  disable_spend_logs: false
+  store_model_in_db: true
+  store_prompts_in_spend_logs: true
+
+  forward_client_headers_to_llm_api: true
