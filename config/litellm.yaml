@@ -107,16 +107,21 @@ model_list:
       api_key: os.environ/OPENROUTER_API_KEY
 
   # ── OpenCode Zen ─────────────────────────────────────────────────
-  - model_name: "opencode/kimi-k2.5"
+  #- model_name: "opencode/kimi-k2.5"
+  #  litellm_params:
+  #    model: "openai/kimi-k2.5"
+  #    api_base: "https://opencode.ai/zen/v1"
+  #    api_key: os.environ/OPENCODE_API_KEY
+  - model_name: "opencode/*"
     litellm_params:
-      model: "openai/kimi-k2.5"
+      model: "openai/*"
       api_base: "https://opencode.ai/zen/v1"
       api_key: os.environ/OPENCODE_API_KEY
-  - model_name: "kimi-k2.5"
-    litellm_params:
-      model: "openai/kimi-k2.5"
-      api_base: "https://opencode.ai/zen/v1"
-      api_key: os.environ/OPENCODE_API_KEY
+  #- model_name: "kimi-k2.5"
+  #  litellm_params:
+  #    model: "openai/kimi-k2.5"
+  #    api_base: "https://opencode.ai/zen/v1"
+  #    api_key: os.environ/OPENCODE_API_KEY
 
 litellm_settings:
   drop_params: true
