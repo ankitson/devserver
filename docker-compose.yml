@@ -65,15 +65,20 @@ services:
     restart: unless-stopped
     depends_on:
       - agent-devbox
+    env_file:
+      - ./secrets/hermes.env             # rendered by `just rs`; daemon reads it, no chown needed
     environment:
       - HERMES_DASHBOARD=1
-    # No host port bindings — homeserver Caddy proxies via mybridge.
-    # Uncomment for local debug without Caddy:
-    # ports:
-    #   - "127.0.0.1:8642:8642"
-    #   - "127.0.0.1:9119:9119"
+      - HERMES_DASHBOARD_TUI=1     # expose the in-browser Chat tab (needs node + ptyprocess, both in image)
     volumes:
-      - ./volumes/hermes:/opt/data
+      - ./volumes/hermes:/opt/data   # Hermes-managed state dir; config.yaml lives here (Hermes reads+writes it)
+      - ./config/hermes.yaml:/config/hermes.yaml:ro  # Config template (copied in on first boot)
+      - agent_devbox_home:/agent_devbox_home
+      - ../cybernetics:/cybernetics
+      - ../allplace:/allplace:ro
+      - ./config/hermes-perms-fix.sh:/etc/cont-init.d/03-hermes-perms-fix:ro  # Fix auth.json perms on every boot
+      - ./config/hermes-config-init.sh:/etc/cont-init.d/02.5-hermes-config-init:ro  # Sync config.yaml from template
+      - ./config/hermes-discord-init.sh:/etc/cont-init.d/04-hermes-discord-init:ro  # Populate Discord creds from env
     dns:
       - 1.1.1.1
       - 8.8.8.8
