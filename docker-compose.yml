@@ -82,6 +82,34 @@ services:
     dns:
       - 1.1.1.1
       - 8.8.8.8
+
+  # ── AgentsView: local-first analytics for AI coding-agent sessions ─
+  # Auto-discovers sessions from the dirs mounted read-only under /agents.
+  # Reached via Caddy at https://agentsview.dev.ankitson.com (reverse_proxy agentsview:8080).
+  # --public-url makes agentsview trust that host/origin (DNS-rebinding guard).
+  agentsview:
+    #image: ghcr.io/kenn-io/agentsview:latest #TODO: swap to ghcr image when its working again
+    image: kenn-io/agentsview:latest
+    container_name: agentsview
+    restart: unless-stopped
+    command: ["--host", "0.0.0.0", "--no-browser", "--public-url", "https://agentsview.dev.ankitson.com"]
+    ports:
+      - "127.0.0.1:${AGENTSVIEW_PORT:-8080}:8080"   # local debug only; LAN/TLS via Caddy
+    environment:
+      - CLAUDE_PROJECTS_DIR=/agents/claude
+      - OPENCODE_DIR=/agents/opencode
+      - CODEX_SESSIONS_DIR=/agents/codex
+      - GEMINI_DIR=/agents/gemini
+      - HERMES_SESSIONS_DIR=/agents/hermes
+      - PI_DIR=/agents/pi
+    volumes:
+      - ./volumes/agentsview:/data                       # SQLite DB (gitignored)
+      - ${HOME}/.claude/projects:/agents/claude:ro
+      - ${HOME}/.local/share/opencode:/agents/opencode:ro
+      - ${HOME}/.codex/sessions:/agents/codex:ro
+      - ${HOME}/.gemini:/agents/gemini:ro
+      - ${HOME}/.pi/agent/sessions:/agents/pi:ro
+      - ${HOME}/hroot/devserver/volumes/hermes/sessions:/agents/hermes:ro
 volumes:
   litellm_pgdata:
   agent_devbox_home:
