@@ -9,6 +9,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libcairo2 libpango-1.0-0 libasound2 \
     && rm -rf /var/lib/apt/lists/*
 
+# docker CLI (client only) so command-cron ops can `docker exec` into sibling
+# containers via the mounted /var/run/docker.sock. Pinned to the host engine.
+RUN curl -fsSL https://download.docker.com/linux/static/stable/x86_64/docker-29.1.5.tgz \
+        -o /tmp/docker.tgz \
+    && tar -xzf /tmp/docker.tgz -C /usr/local/bin --strip-components=1 docker/docker \
+    && rm /tmp/docker.tgz \
+    && docker --version
+
 WORKDIR /app
 
 COPY shared /app/shared

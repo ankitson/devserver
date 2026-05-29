@@ -99,6 +99,14 @@ services:
       # sensors pick them up). See landing_zone/README.md for the contract.
       - /mnt/synologydrive/docs-root/projects/data-dropbox:/landing_zone
       - /mnt/synologydrive/docs-root/gaming-backups/aoe4-replays:/aoe4-replays
+      # Lets command-cron jobs `docker exec` into sibling containers
+      # (e.g. birdclaw in app-runner). Grants host container control — consistent
+      # with the devbox/app-runner setup.
+      - /var/run/docker.sock:/var/run/docker.sock
+      # birdclaw's SQLite (read-only) — mounted as a directory so the WAL
+      # sidecar files are visible to readers; `bookmarks_import.py` opens
+      # /birdclaw/birdclaw.sqlite with mode=ro.
+      - /home/ankit/hroot/homeserver/volumes/birdclaw:/birdclaw:ro
     healthcheck:
       test: ["CMD-SHELL", "python -c 'import urllib.request;urllib.request.urlopen(\"http://localhost:3000/server_info\",timeout=2).read()'"]
       interval: 20s

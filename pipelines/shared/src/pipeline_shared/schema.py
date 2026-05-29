@@ -173,6 +173,28 @@ CREATE INDEX IF NOT EXISTS playnite_sessions_date
     ON playnite_sessions (date_session);
 CREATE INDEX IF NOT EXISTS playnite_sessions_source
     ON playnite_sessions (source_name);
+
+-- Bookmarks mirrored from birdclaw's SQLite. Keyed by (account_id, tweet_id)
+-- so the import is idempotent: re-running upserts the latest text/metrics
+-- without duplicating rows.
+CREATE TABLE IF NOT EXISTS x_bookmarks (
+    account_id            TEXT NOT NULL,
+    tweet_id              TEXT NOT NULL,
+    author_handle         TEXT NOT NULL,
+    author_display_name   TEXT,
+    text                  TEXT NOT NULL,
+    tweet_created_at      TIMESTAMPTZ,
+    like_count            INTEGER NOT NULL DEFAULT 0,
+    media_count           INTEGER NOT NULL DEFAULT 0,
+    bookmarked_at         TIMESTAMPTZ,
+    tweet_url             TEXT NOT NULL,
+    imported_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (account_id, tweet_id)
+);
+CREATE INDEX IF NOT EXISTS x_bookmarks_created
+    ON x_bookmarks (tweet_created_at DESC);
+CREATE INDEX IF NOT EXISTS x_bookmarks_account_created
+    ON x_bookmarks (account_id, tweet_created_at DESC);
 """
 
 

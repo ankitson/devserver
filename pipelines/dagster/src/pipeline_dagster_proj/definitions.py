@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 from datetime import date, timedelta
 
 from dagster import (
@@ -9,10 +10,13 @@ from dagster import (
     DefaultScheduleStatus,
     Definitions,
     EnvVar,
+    In,
     RunRequest,
     ScheduleDefinition,
     define_asset_job,
     in_process_executor,
+    job,
+    op,
     schedule,
 )
 
@@ -30,6 +34,9 @@ from pipeline_dagster_proj.banking import (
     bank_otp_sensor,
     bank_resume_job,
     notifier_sensor,
+)
+from pipeline_dagster_proj.bookmarks_import import (
+    birdclaw_bookmarks_import_job,
 )
 from pipeline_dagster_proj.filecopy import make_copy_pipeline
 from pipeline_dagster_proj.gameactivity import (
@@ -95,13 +102,94 @@ def garmin_daily_schedule(context):
     ]
 
 
+# birdclaw sync — Dagster as a plain scheduler for `docker exec` into the
+# app-runner container (which owns birdclaw + its SQLite). Needs the Docker
+# socket mounted into pipeline-dagster + a docker CLI in the image. Hourly,
+# mirroring the retired DBOS x_bookmarks tick; idempotent + cheap (birdclaw
+# early-stops), so RUNNING by default.
+_BIRDCLAW_EXEC = [
+    "docker", "exec",
+    "-e", "BIRDCLAW_HOME=/data/birdclaw",
+    # HOME points xurl at the directory-mounted token (/data/birdclaw/.xurl);
+    # the old single-file .xurl bind mount went stale on token refresh.
+    "-e", "HOME=/data/birdclaw",
+    "-w", "/apps/birdclaw",
+    "app-runner",
+    "node", "bin/birdclaw.mjs", "--json",
+]
+
+
+def _run_birdclaw(context, args: list[str]) -> str:
+    cmd = _BIRDCLAW_EXEC + args
+    context.log.info("exec: %s", " ".join(cmd))
+    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
+    if proc.stdout.strip():
+        context.log.info("stdout:\n%s", proc.stdout.strip()[-4000:])
+    if proc.stderr.strip():
+        context.log.info("stderr:\n%s", proc.stderr.strip()[-4000:])
+    if proc.returncode != 0:
+        raise Exception(f"birdclaw exited {proc.returncode}")
+    return proc.stdout
+
+
+def _account_sync_op(account: str):
+    # One op per account (the account is closed over, not a graph input).
+    # `after` is an optional ordering input: when wired, it forces sequential
+    # execution so the two syncs don't contend on the shared birdclaw store /
+    # X rate limit.
+    @op(name=f"birdclaw_sync_{account}", ins={"after": In(str, default_value="")})
+    def _op(context, after) -> str:
+        return _run_birdclaw(context, [
+            "jobs", "sync-account", "--account", account,
+            "--mode", "xurl", "--steps", "likes,bookmarks", "--max-pages", "50", "--refresh"
+        ])
+    return _op
+
+
+birdclaw_sync_primary_op = _account_sync_op("acct_primary")
+birdclaw_sync_abiosno_op = _account_sync_op("acct_abiosno")
+
+
+@job
+def birdclaw_sync_bookmarks_job():
+    birdclaw_sync_primary_op(after=birdclaw_sync_abiosno_op())
+
+
+@schedule(
+    cron_schedule="0 * * * *",
+    job=birdclaw_sync_bookmarks_job,
+    default_status=DefaultScheduleStatus.RUNNING,
+)
+def birdclaw_sync_bookmarks_schedule(context):
+    return RunRequest(
+        run_key=f"birdclaw-bookmarks-{context.scheduled_execution_time:%Y%m%d%H}"
+    )
+
+
+# Mirrors birdclaw's SQLite bookmarks into postgres. Runs 15 min after the
+# sync job so the freshly-pulled bookmarks are picked up the same hour.
+# Idempotent upsert, so retries / overlaps are safe.
+@schedule(
+    cron_schedule="15 * * * *",
+    job=birdclaw_bookmarks_import_job,
+    default_status=DefaultScheduleStatus.RUNNING,
+)
+def birdclaw_bookmarks_import_schedule(context):
+    return RunRequest(
+        run_key=f"birdclaw-bookmarks-import-{context.scheduled_execution_time:%Y%m%d%H}"
+    )
+
+
 defs = Definitions(
     assets=all_assets,
     asset_checks=asset_checks,
     jobs=[garmin_full_job, bank_login_job, bank_resume_job,
           playnite_gameactivity_job, landing_zone_gc_job,
-          aoe4_replays_copy_job],
-    schedules=[garmin_daily_schedule, landing_zone_gc_schedule],
+          aoe4_replays_copy_job, birdclaw_sync_bookmarks_job,
+          birdclaw_bookmarks_import_job],
+    schedules=[garmin_daily_schedule, landing_zone_gc_schedule,
+               birdclaw_sync_bookmarks_schedule,
+               birdclaw_bookmarks_import_schedule],
     sensors=[bank_otp_sensor, notifier_sensor, playnite_landing_sensor,
              aoe4_replays_landing_sensor],
     resources={
