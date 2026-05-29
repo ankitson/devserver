@@ -35,7 +35,7 @@ services:
 
   # ── Agent sandbox: devbox-image container that Hermes drives over SSH ──────
   agent-devbox:
-    image: ankit/devbox:1.3
+    image: ankit/devbox:1.4
     container_name: agent-devbox
     hostname: agent-devbox
     env_file:
@@ -110,9 +110,82 @@ services:
       - ${HOME}/.gemini:/agents/gemini:ro
       - ${HOME}/.pi/agent/sessions:/agents/pi:ro
       - ${HOME}/hroot/devserver/volumes/hermes/sessions:/agents/hermes:ro
+
+  # ── OpenClaw gateway: personal AI assistant, runs in its own devbox-image container ─
+  # Drives a browser only over CDP (browser.profiles.sidecar -> openclaw-browser:9222),
+  # so the GUI lives in the sidecar, not here. State restored from ./volumes/openclaw.
+  openclaw:
+    build:
+      # Build context fetched from git so other machines can rebuild without
+      # cloning /projects/dockers locally. `#main:openclaw` = main branch,
+      # openclaw/ subdir of the repo.
+      context: https://git.home.ankitson.com/ankitson/dockers.git#main:openclaw
+      dockerfile: Dockerfile
+      args:
+        DEVBOX_TAG: "latest"         # ankit/devbox:latest (currently aliases 1.5)
+    image: ankit/openclaw:local
+    container_name: openclaw
+    hostname: openclaw
+    restart: unless-stopped
+    depends_on:
+      - agent-browser
+    # Container is single-purpose (gateway only, no SSH/Hermes) → expose secrets as primary
+    # container env so every subprocess (browser-control sidecar, etc.) inherits them, not
+    # just the gateway shell that the entrypoint sources from the bind-mount.
+    env_file:
+      - ./secrets/openclaw.env
+    volumes:
+      - ./volumes/openclaw:/home/ankit/.openclaw            # restored live state (gitignored)
+      - ./secrets/openclaw.env:/run/openclaw/openclaw.env:ro
+      - /projects:/projects:rw
+      - /projects/toolbox:/home/ankit/toolbox:rw
+      - /projects/toolbox:/home/ankit/.agents:rw
+      # Obsidian vaults — match Hermes mount paths so agent prompts can refer to them consistently
+      - /home/ankit/hroot/allplace:/allplace:ro             # read-only reference vault
+      - /home/ankit/hroot/cybernetics:/cybernetics:rw       # read-write working vault
+      # Pi agent state (auth, sessions, settings) — shared rw with host so sessions sync
+      - /home/ankit/.pi:/home/ankit/.pi:rw
+    ports:
+      - "127.0.0.1:18789:18789"      # gateway; LAN/TLS via Caddy
+      # Web-app preview range. Bound to 0.0.0.0 (no 127.0.0.1: prefix) so LAN/
+      # Tailscale devices reach http://dev.ankitson.com:<port>. Agents serving
+      # web apps from inside openclaw should pick a port in 5000-5099 and
+      # listen on 0.0.0.0:<port>.
+      - "5000-5099:5000-5099"
+    shm_size: 2g
+    security_opt:
+      - seccomp:unconfined
+
+  # ── agent-browser: generic CDP-driven chromium + Xvfb + x11vnc + noVNC GUI ─
+  # Not openclaw-specific — any agent on `mybridge` can drive it via auth-gated CDP.
+  # CDP relay on 9222 (internal to mybridge); noVNC web GUI on 6080.
+  # The OPENCLAW_BROWSER_* env names are the upstream relay's wire contract (kept as-is).
+  agent-browser:
+    build:
+      context: https://git.home.ankitson.com/ankitson/dockers.git#main:agent-browser
+      dockerfile: Dockerfile
+    image: ankit/agent-browser:local
+    container_name: agent-browser
+    hostname: agent-browser
+    restart: unless-stopped
+    env_file:
+      - ./secrets/openclaw.env       # OPENCLAW_BROWSER_CDP_AUTH_TOKEN, _NOVNC_PASSWORD
+    environment:
+      - OPENCLAW_BROWSER_CDP_PORT=9222   # entrypoint's CDP relay reads this from env (no shell default export)
+      - OPENCLAW_BROWSER_NO_SANDBOX=1
+      - OPENCLAW_BROWSER_HEADLESS=0
+      - OPENCLAW_BROWSER_ENABLE_NOVNC=1
+    ports:
+      - "127.0.0.1:6080:6080"        # noVNC GUI; LAN/TLS via Caddy
+    volumes:
+      - agent_browser_home:/tmp/openclaw-home   # persist chromium profile
+    shm_size: 2g
+    security_opt:
+      - seccomp:unconfined
 volumes:
   litellm_pgdata:
   agent_devbox_home:
+  agent_browser_home:
 networks:
   default:
     name: mybridge
