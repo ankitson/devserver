@@ -43,6 +43,9 @@ services:
     volumes:
       - agent_devbox_home:/home/ankit
       - /projects:/projects:ro
+      - /projects/toolbox:/home/ankit/toolbox:ro
+      - /projects/toolbox:/home/ankit/.agents:ro
+      - /home/ankit/hroot/allplace:/home/ankit/hroot/allplace:ro
     restart: unless-stopped
     shm_size: 2g
     security_opt:
