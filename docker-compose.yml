@@ -182,10 +182,39 @@ services:
     shm_size: 2g
     security_opt:
       - seccomp:unconfined
+
+  # ── Speaches: faster-whisper STT server, OpenAI-compatible /v1/audio/transcriptions ─
+  # Internal-only (no LAN port) — reached via mybridge from openclaw / hermes / litellm.
+  # Default WHISPER__MODEL is what `model=""` requests resolve to; clients can override
+  # per-request. int8 keeps Whisper Turbo at ~1.6 GB on the shared 2070 SUPER.
+  speaches:
+    image: ghcr.io/speaches-ai/speaches:latest-cuda
+    container_name: speaches
+    hostname: speaches
+    restart: unless-stopped
+    environment:
+      - WHISPER__MODEL=deepdml/faster-whisper-large-v3-turbo-ct2   # community CT2 of Whisper Turbo (Systran hasn't published a Turbo CT2)
+      - WHISPER__INFERENCE_DEVICE=cuda
+      - WHISPER__COMPUTE_TYPE=float16        # fp16: full Turbo precision (~1.6 GB VRAM, was int8 ~1.0 GB)
+      - WHISPER__TTL=300                  # unload after 5 min idle to free VRAM for llama-cpp
+      - HF_HOME=/home/ubuntu/.cache/huggingface
+    ports:
+      - "127.0.0.1:8800:8000"             # local debug only; service-to-service via hostname
+    volumes:
+      - speaches_hf_cache:/home/ubuntu/.cache/huggingface   # persist downloaded whisper weights
+    shm_size: 1g
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
 volumes:
   litellm_pgdata:
   agent_devbox_home:
   agent_browser_home:
+  speaches_hf_cache:
 networks:
   default:
     name: mybridge
