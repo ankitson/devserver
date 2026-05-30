@@ -7,3 +7,50 @@ link them here.
 Production status, Garmin API quirks, auth/rate-limit notes, landing-zone
 contract, and pending work. Full detail:
 [`pipelines/docs/NOTES.md`](../pipelines/docs/NOTES.md).
+
+## OpenClaw + agent-browser
+- **Two services**:
+  - `openclaw` — gateway, thin `docker/openclaw/` image (`FROM ankit/devbox`).
+  - `agent-browser` — generic CDP/noVNC chromium sidecar (`docker/agent-browser/`, vendored from
+    upstream openclaw's `Dockerfile.browser`). **Not openclaw-specific** — any agent on `mybridge`
+    can drive it.
+- **Devbox-tag dependency**: `docker/openclaw/Dockerfile` builds `FROM ankit/devbox:${DEVBOX_TAG}`
+  (default `1.4`, the same tag `agent-devbox` runs). If the devbox image is rebuilt/retagged, bump
+  the `DEVBOX_TAG` build arg in `docker-compose.yml` (openclaw service) and rebuild (`just oc-build`).
+- **State source**: live state is `volumes/openclaw` (newer/more complete than the
+  `/projects/openclaw-back` Feb-6 cold backup). `openclaw.json` already holds channel/provider
+  secrets; `volumes/` is gitignored.
+- **CDP auth is mandatory**: the sidecar's CDP relay only listens off-loopback when
+  `OPENCLAW_BROWSER_CDP_AUTH_TOKEN` is set. `openclaw.json` references it as
+  `${OPENCLAW_BROWSER_CDP_AUTH_TOKEN}` in `browser.profiles.sidecar.cdpUrl` (env-substituted at
+  config read), so the token stays in 1Password / `secrets/openclaw.env`, not in the JSON.
+  Env-var names kept as `OPENCLAW_BROWSER_*` because that's the upstream relay's wire contract,
+  even though the service is now `agent-browser`.
+- **Host-header rewrite in the relay**: Chrome's DevTools endpoint rejects any Host header that
+  isn't `localhost`/IP. The vendored relay in `docker/agent-browser/entrypoint.sh` rewrites the
+  Host to `localhost:<UPSTREAM>` before forwarding upstream; `--remote-allow-origins=*` is added
+  for WS-upgrade safety. OpenClaw normalizes the discovered WS URL back to the relay host, so this
+  is transparent.
+- **1Password**: gateway/CDP/noVNC secrets all reuse the existing `clankers/local-service/password`
+  item (no dedicated openclaw item). Swap to per-purpose items later if you want them rotated separately.
+- **Browser GUI / sessions**: noVNC at `agentbrowser.dev.ankitson.com` (or `127.0.0.1:6080`).
+  Chromium profile persists in the `agent_browser_home` volume; log into sites there once to
+  persist cookies. Restoring the old `volumes/openclaw/browser/openclaw/user-data` is best-effort
+  (OS-bound encrypted creds won't carry).
+- **Remote browsers**: add a profile like
+  `laptop: { cdpUrl: "http://<host-or-tailscale>:9222", attachOnly: true }` pointing at Chrome run
+  with `--remote-debugging-port=9222` on another device.
+- **Caddy routes** (in `~/hroot/homeserver/volumes/caddy/dev.Caddyfile`):
+  `openclaw.dev.ankitson.com` → `openclaw:18789`; `agentbrowser.dev.ankitson.com` → `agent-browser:6080`.
+- **Stale `@crab` route** in the main Caddyfile points to a long-gone `openclaw-gateway` container —
+  safe to delete or repoint at `openclaw:18789` next time you touch that file.
+
+## Host-shared agent directories
+- **Toolbox contract**: `/projects/toolbox` is the canonical host-shared toolbox clone. Agent
+  containers that need personal instructions/skills should bind-mount it at both
+  `/home/ankit/toolbox` and `/home/ankit/.agents`; do not rely on baked image symlinks or entrypoint
+  mutation for these paths.
+- **Current consumers**: `agent-devbox` mounts toolbox read-only because its `/projects` workspace is
+  read-only; `openclaw` mounts toolbox read-write because its `/projects` workspace is read-write.
+- **Non-consumers**: `hermes`, `agentsview`, `agent-browser`, and `speaches` do not run the
+  devbox-style agent home and do not need these mounts right now.
