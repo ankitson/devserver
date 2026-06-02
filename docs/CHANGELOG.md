@@ -29,3 +29,12 @@ OpenClaw drives the browser only over CDP (`browser.profiles.sidecar`, `attachOn
 `config/openclaw.env.tmpl` → `just rs`.
 Recipes: `just oc-build` / `oc-up` / `oc-logs` / `ab-logs`. Caddy routes:
 `openclaw.dev.ankitson.com` → gateway, `agentbrowser.dev.ankitson.com` → noVNC. See [`NOTES.md`](NOTES.md).
+
+## MCPProxy gateway (2026-06-02)
+- Added a host-networked `mcpproxy` service backed by the shared `ankit/mcpproxy:0.35.0` image.
+- Added a seed-once Fastmail upstream configuration with OAuth scopes, direct default routing,
+  disabled code execution, disabled telemetry, and mandatory downstream MCP authentication.
+- Added a dedicated 1Password-backed admin env template and operator recipes for targeted startup,
+  logs, health, Fastmail OAuth, downstream token creation, and authenticated smoke tests.
+- Persisted MCPProxy live config, OAuth state, and token hashes in the sensitive `mcpproxy_data`
+  named volume.

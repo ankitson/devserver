@@ -33,6 +33,36 @@ services:
       timeout: 5s
       retries: 5
 
+  # ── MCPProxy: shared MCP gateway with upstream OAuth and scoped agent tokens ─
+  # Host networking is required for OAuth providers that redirect to MCPProxy's
+  # loopback callback listener. The HTTP API still binds only to mybridge's host
+  # gateway, making it reachable from Caddy without exposing port 3130 on the LAN.
+  mcpproxy:
+    build:
+      context: /projects/dockers/mcpproxy
+      dockerfile: Dockerfile
+      args:
+        MCPPROXY_VERSION: "0.35.0"
+        MCPPROXY_SHA256: "5fd8592469117fb4656a8b4d335bdf651219f210d4911a5849b6dcc510b2f97c"
+    image: ankit/mcpproxy:0.35.0
+    container_name: mcpproxy
+    hostname: mcpproxy
+    restart: unless-stopped
+    network_mode: host
+    env_file:
+      - ./secrets/mcpproxy.env
+    environment:
+      - HEADLESS=1
+      - MCPPROXY_TELEMETRY=false
+    volumes:
+      - mcpproxy_data:/data
+      - ./config/mcpproxy.seed.json:/seed/mcp_config.json:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://172.19.0.1:3130/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
   # ── Agent sandbox: devbox-image container that Hermes drives over SSH ──────
   agent-devbox:
     image: ankit/devbox:1.4
@@ -215,6 +245,7 @@ services:
               capabilities: [gpu]
 volumes:
   litellm_pgdata:
+  mcpproxy_data:
   agent_devbox_home:
   agent_browser_home:
   speaches_hf_cache:

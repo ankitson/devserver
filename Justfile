@@ -113,3 +113,82 @@ speaches-test file:
     -F "file=@{{file}}" \
     -F "model=deepdml/faster-whisper-large-v3-turbo-ct2" \
     -F "response_format=json" | python3 -m json.tool
+
+# ── MCPProxy shared MCP gateway ─────────────────────────────────────
+# Keep the Compose project name stable when running from an isolated worktree.
+mcpproxy-up:
+  {{COMPOSE}} -p devserver up -d --build --no-deps mcpproxy
+
+mcpproxy-logs:
+  {{COMPOSE}} -p devserver logs -f mcpproxy
+
+mcpproxy-health:
+  curl -fsS http://172.19.0.1:3130/healthz
+  @echo
+
+# Run this on the devserver host: Fastmail redirects the browser to a
+# 127.0.0.1 callback listener owned by the host-networked container.
+mcpproxy-auth-fastmail:
+  #!/usr/bin/env bash
+  set -euo pipefail
+  started="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  output="$(mktemp /tmp/mcpproxy-auth-fastmail.XXXXXX)"
+  trap 'rm -f "$output"' EXIT
+  docker exec mcpproxy mcpproxy \
+    --config /data/mcp_config.json \
+    --data-dir /data \
+    auth login --server=fastmail --timeout=5m >"$output" 2>&1 &
+  login_pid=$!
+  trap 'kill "$login_pid" 2>/dev/null || true; rm -f "$output"' EXIT
+  for _ in $(seq 1 30); do
+    auth_url="$(
+      docker logs --since "$started" mcpproxy 2>&1 \
+        | python3 -c 'import json, re, sys; matches = re.findall(r"\"auth_url\": \"([^\"]+)\"", sys.stdin.read()); print(json.loads(f"\"{matches[-1]}\"") if matches else "")'
+    )"
+    if [[ -n "$auth_url" ]]; then
+      printf 'Open this URL in a browser running on the devserver host:\n\n%s\n\n' "$auth_url"
+      wait "$login_pid"
+      exit $?
+    fi
+    if ! kill -0 "$login_pid" 2>/dev/null; then
+      wait "$login_pid" || true
+      cat "$output" >&2
+      exit 1
+    fi
+    sleep 1
+  done
+  echo "Timed out waiting for MCPProxy to emit a Fastmail authorization URL." >&2
+  cat "$output" >&2
+  exit 1
+
+mcpproxy-auth-status:
+  docker exec mcpproxy mcpproxy \
+    --config /data/mcp_config.json \
+    --data-dir /data \
+    auth status --server=fastmail
+
+# Prints the raw token exactly once. Store it in clankers/mcpproxy-agents.
+mcpproxy-token-create:
+  docker exec mcpproxy mcpproxy \
+    --config /data/mcp_config.json \
+    --data-dir /data \
+    token create \
+    --name shared-agents \
+    --servers "*" \
+    --permissions read,write,destructive \
+    --expires 365d \
+    --output json
+
+# Usage:
+# MCPPROXY_AGENT_TOKEN="$(op read 'op://clankers/mcpproxy-agents/password')" just mcpproxy-smoke
+mcpproxy-smoke:
+  #!/usr/bin/env bash
+  set -euo pipefail
+  : "${MCPPROXY_AGENT_TOKEN:?set MCPPROXY_AGENT_TOKEN from 1Password}"
+  curl --fail-with-body --silent --show-error \
+    http://172.19.0.1:3130/mcp/all \
+    --header "Authorization: Bearer ${MCPPROXY_AGENT_TOKEN}" \
+    --header "Accept: application/json, text/event-stream" \
+    --header "Content-Type: application/json" \
+    --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"devserver-smoke","version":"1.0.0"}}}'
+  echo
