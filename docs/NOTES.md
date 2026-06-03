@@ -67,6 +67,9 @@ contract, and pending work. Full detail:
 - **Client contract**: default direct routing is `/mcp`; explicit direct routing is `/mcp/all`;
   retrieval routing for large catalogs is `/mcp/call`. All MCP routes require a scoped downstream
   bearer token separate from `MCPPROXY_API_KEY`.
+- **Upstreams imported from clients**: `fastmail` came from Pi/OpenCode dotfiles. `exa` came from
+  live Claude and Pi MCP configs and runs as `npx -y exa-mcp-server@3.2.1` with `EXA_API_KEY`
+  injected from 1Password into the MCPProxy container.
 - **Rollout**: complete Fastmail authorization in a browser running on the devserver host, generate
   the shared downstream agent token, store it in 1Password, then smoke-test before wiring clients.
   See [`docs/2026-06-02-mcpproxy-gateway/README.md`](2026-06-02-mcpproxy-gateway/README.md).
