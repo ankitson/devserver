@@ -1,0 +1,13 @@
+{
+  "mcp": {
+    "servers": {
+      "mcpproxy": {
+        "transport": "streamable-http",
+        "url": "https://mcp.dev.ankitson.com/mcp",
+        "headers": {
+          "Authorization": "Bearer ${MCPPROXY_AGENT_TOKEN}"
+        }
+      }
+    }
+  }
+}

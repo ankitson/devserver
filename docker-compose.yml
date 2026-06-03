@@ -170,6 +170,9 @@ services:
     volumes:
       - ./volumes/openclaw:/home/ankit/.openclaw            # restored live state (gitignored)
       - ./secrets/openclaw.env:/run/openclaw/openclaw.env:ro
+      # Declarative config patch applied by the entrypoint on every start.
+      # Adds mcp.servers.mcpproxy (gateway) with ${MCPPROXY_AGENT_TOKEN} from openclaw.env.
+      - ./config/openclaw.config.patch.json:/run/openclaw/openclaw.config.patch.json:ro
       - /projects:/projects:rw
       - /projects/toolbox:/home/ankit/toolbox:rw
       - /projects/toolbox:/home/ankit/.agents:rw
