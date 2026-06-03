@@ -1,0 +1,42 @@
+{
+  "listen": "172.19.0.1:3130",
+  "data_dir": "/data",
+  "enable_socket": true,
+  "require_mcp_auth": true,
+  "routing_mode": "direct",
+  "enable_code_execution": false,
+  "telemetry": {
+    "enabled": false
+  },
+  "mcpServers": [
+    {
+      "name": "exa",
+      "protocol": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "exa-mcp-server@3.2.1"
+      ],
+      "env": {
+        "EXA_API_KEY": "${env:EXA_API_KEY}"
+      },
+      "skip_quarantine": true,
+      "enabled": true
+    },
+    {
+      "name": "fastmail",
+      "url": "https://api.fastmail.com/mcp",
+      "protocol": "http",
+      "oauth": {
+        "scopes": [
+          "https://www.fastmail.com/dev/mcp",
+          "offline_access"
+        ],
+        "extra_params": {
+          "resource": "https://api.fastmail.com/mcp"
+        }
+      },
+      "enabled": true
+    }
+  ]
+}

@@ -54,3 +54,22 @@ contract, and pending work. Full detail:
   read-only; `openclaw` mounts toolbox read-write because its `/projects` workspace is read-write.
 - **Non-consumers**: `hermes`, `agentsview`, `agent-browser`, and `speaches` do not run the
   devbox-style agent home and do not need these mounts right now.
+
+## 2026-06-02 - Dockerized MCPProxy gateway
+- **Goal**: provide one MCP gateway for standards-compliant upstream MCP servers and MCP-capable
+  clients without forwarding downstream credentials to upstream providers.
+- **Decision**: run MCPProxy personal edition `v0.35.0` with host networking because its OAuth
+  callback listener binds to `127.0.0.1:<ephemeral-port>`. Keep its HTTP API bound to the
+  `mybridge` gateway at `172.19.0.1:3130`, which Caddy can reach without a LAN listener.
+- **Bootstrap**: `config/mcpproxy.seed.json` adds Fastmail and is copied only for an empty data
+  volume. MCPProxy owns live config, OAuth refresh tokens, DCR credentials, and hashed agent tokens
+  under the sensitive `mcpproxy_data` volume after first boot.
+- **Client contract**: default direct routing is `/mcp`; explicit direct routing is `/mcp/all`;
+  retrieval routing for large catalogs is `/mcp/call`. All MCP routes require a scoped downstream
+  bearer token separate from `MCPPROXY_API_KEY`.
+- **Upstreams imported from clients**: `fastmail` came from Pi/OpenCode dotfiles. `exa` came from
+  live Claude and Pi MCP configs and runs as `npx -y exa-mcp-server@3.2.1` with `EXA_API_KEY`
+  injected from 1Password into the MCPProxy container.
+- **Rollout**: complete Fastmail authorization in a browser running on the devserver host, generate
+  the shared downstream agent token, store it in 1Password, then smoke-test before wiring clients.
+  See [`docs/2026-06-02-mcpproxy-gateway/README.md`](2026-06-02-mcpproxy-gateway/README.md).
