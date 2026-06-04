@@ -110,28 +110,41 @@ mcpproxy-auth-fastmail:
   docker exec mcpproxy mcpproxy \
     --config /data/mcp_config.json \
     --data-dir /data \
-    auth login --server=fastmail --timeout=5m >"$output" 2>&1 &
-  login_pid=$!
-  trap 'kill "$login_pid" 2>/dev/null || true; rm -f "$output"' EXIT
+    auth login --server=fastmail --timeout=5m >"$output" 2>&1
   for _ in $(seq 1 30); do
     auth_url="$(
       docker logs --since "$started" mcpproxy 2>&1 \
         | python3 -c 'import json, re, sys; matches = re.findall(r"\"auth_url\": \"([^\"]+)\"", sys.stdin.read()); print(json.loads(f"\"{matches[-1]}\"") if matches else "")'
     )"
     if [[ -n "$auth_url" ]]; then
-      printf 'Open this URL in a browser running on the devserver host:\n\n%s\n\n' "$auth_url"
-      wait "$login_pid"
-      exit $?
-    fi
-    if ! kill -0 "$login_pid" 2>/dev/null; then
-      wait "$login_pid" || true
-      cat "$output" >&2
-      exit 1
+      break
     fi
     sleep 1
   done
-  echo "Timed out waiting for MCPProxy to emit a Fastmail authorization URL." >&2
-  cat "$output" >&2
+  if [[ -z "${auth_url:-}" ]]; then
+    echo "Timed out waiting for MCPProxy to emit a Fastmail authorization URL." >&2
+    cat "$output" >&2
+    exit 1
+  fi
+  printf 'Open this URL in a browser running on this host (%s):\n\n%s\n\n' "$(hostname)" "$auth_url"
+  echo "Waiting for Fastmail to complete the loopback callback and connect..."
+  for _ in $(seq 1 60); do
+    if docker exec mcpproxy mcpproxy \
+      --config /data/mcp_config.json \
+      --data-dir /data \
+      upstream list --output json 2>/dev/null \
+      | python3 -c 'import json, sys; server = next((s for s in json.load(sys.stdin) if s.get("id") == "fastmail"), {}); sys.exit(0 if server.get("connected") and server.get("status") == "ready" else 1)'; then
+      docker exec mcpproxy mcpproxy \
+        --config /data/mcp_config.json \
+        --data-dir /data \
+        upstream approve fastmail >/dev/null
+      echo "Fastmail OAuth is complete, the upstream is connected, and tools are approved."
+      exit 0
+    fi
+    sleep 5
+  done
+  echo "Timed out waiting for Fastmail OAuth to complete." >&2
+  echo "Open the URL above on the same host before the callback listener expires, then rerun mcpproxy-auth-status." >&2
   exit 1
 
 mcpproxy-auth-status:

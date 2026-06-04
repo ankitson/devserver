@@ -3,7 +3,7 @@
     "servers": {
       "mcpproxy": {
         "transport": "streamable-http",
-        "url": "https://mcp.dev.ankitson.com/mcp",
+        "url": "${MCPPROXY_GATEWAY_URL}",
         "headers": {
           "Authorization": "Bearer ${MCPPROXY_AGENT_TOKEN}"
         }

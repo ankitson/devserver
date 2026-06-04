@@ -40,3 +40,11 @@ Recipes: `just oc-build` / `oc-up` / `oc-logs` / `ab-logs`. Caddy routes:
   logs, health, Fastmail OAuth, downstream token creation, and authenticated smoke tests.
 - Persisted MCPProxy live config, OAuth state, and token hashes in the sensitive `mcpproxy_data`
   named volume.
+
+### Fastmail OAuth helper (2026-06-03)
+- Changed `just mcpproxy-auth-fastmail` to wait for the Fastmail upstream to become connected after
+  printing the daemon's headless authorization URL, then approve Fastmail's discovered tools.
+- Documented that the Fastmail authorization URL must be opened on the same host that runs
+  `mcpproxy`, because the OAuth callback is bound to `127.0.0.1`.
+- Moved OpenClaw's MCPProxy endpoint into `config/openclaw.env.tmpl` as `MCPPROXY_GATEWAY_URL` and
+  made `config/openclaw.config.patch.json` reference that env var.

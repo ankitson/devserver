@@ -73,3 +73,15 @@ contract, and pending work. Full detail:
 - **Rollout**: complete Fastmail authorization in a browser running on the devserver host, generate
   the shared downstream agent token, store it in 1Password, then smoke-test before wiring clients.
   See [`docs/2026-06-02-mcpproxy-gateway/README.md`](2026-06-02-mcpproxy-gateway/README.md).
+
+## 2026-06-03 - Fastmail MCPProxy OAuth investigation
+- **Finding**: MCPProxy and Exa are healthy, but Fastmail is not connected because no completed
+  OAuth callback has persisted a refresh token in `mcpproxy_data`.
+- **Operational cause**: Fastmail OAuth uses a daemon-owned loopback callback at
+  `127.0.0.1:<ephemeral>/oauth/callback`. The authorization URL must be opened on the same host
+  running `mcpproxy`; opening it elsewhere sends the callback to the wrong machine.
+- **Helper fix**: `just mcpproxy-auth-fastmail` now treats daemon-mode `auth login` as an initiation
+  step, prints the URL, waits until `upstream list` reports Fastmail as connected and ready, then
+  approves Fastmail's discovered tools so downstream clients can see them.
+- **OpenClaw config**: the OpenClaw patch reads `${MCPPROXY_GATEWAY_URL}` from `openclaw.env`
+  instead of hardcoding the gateway endpoint in `openclaw.config.patch.json`.

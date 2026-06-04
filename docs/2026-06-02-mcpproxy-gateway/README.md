@@ -31,7 +31,8 @@ Authentication has two separate boundaries:
 
 ## Deploy
 
-Build the `projects/dockers` image branch first. Once it is merged into the canonical checkout:
+Build the `projects/dockers` image branch first. Once it is merged into the canonical checkout,
+render `config/mcpproxy.env.tmpl` before starting the service:
 
 ```bash
 just rs
@@ -42,8 +43,12 @@ just mcpproxy-auth-status
 just mcpproxy-token-create
 ```
 
-`just mcpproxy-auth-fastmail` prints the Fastmail authorization URL emitted by the headless daemon.
-Open it in a browser running on the devserver host so the loopback callback can complete.
+`just mcpproxy-auth-fastmail` asks the running daemon to start Fastmail OAuth, prints the
+authorization URL emitted by the headless daemon, and waits for the Fastmail upstream to connect.
+Open that URL in a browser running on the same host that runs `mcpproxy`; the redirect URI is
+`127.0.0.1:<ephemeral>/oauth/callback`, so opening it on any other machine sends the callback to the
+wrong loopback interface. After the upstream connects, the recipe approves Fastmail's discovered
+tools so downstream clients can see them.
 
 The token-create command prints the raw downstream token once. Store it as the password field of
 the `clankers/mcpproxy-agents` 1Password item, then run:
@@ -74,7 +79,7 @@ downstream token state together.
 ## Verification
 
 1. Confirm an unauthenticated MCP request returns `401`.
-2. Complete Fastmail OAuth and verify `just mcpproxy-auth-status`.
+2. Complete Fastmail OAuth, approve discovered tools, and verify `just mcpproxy-auth-status`.
 3. Confirm Exa tools are discovered after `npx` installs `exa-mcp-server@3.2.1`.
 4. Generate and store the scoped agent token.
 5. Run authenticated `initialize` and `tools/list` requests through local and private HTTPS routes.
