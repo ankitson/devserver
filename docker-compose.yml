@@ -171,16 +171,14 @@ services:
       - ./volumes/openclaw:/home/ankit/.openclaw            # restored live state (gitignored)
       - ./secrets/openclaw.env:/run/openclaw/openclaw.env:ro
       # Declarative config patch applied by the entrypoint on every start.
-      # Adds mcp.servers.mcpproxy (gateway) with ${MCPPROXY_AGENT_TOKEN} from openclaw.env.
-      - ./config/openclaw.config.patch.json:/run/openclaw/openclaw.config.patch.json:ro
+      # Rendered by `just rs` so the mcpproxy bearer token stays out of git.
+      - ./secrets/openclaw.config.patch.json:/run/openclaw/openclaw.config.patch.json:ro
       - /projects:/projects:rw
       - /projects/toolbox:/home/ankit/toolbox:rw
       - /projects/toolbox:/home/ankit/.agents:rw
       # Obsidian vaults — match Hermes mount paths so agent prompts can refer to them consistently
       - /home/ankit/hroot/allplace:/allplace:ro             # read-only reference vault
       - /home/ankit/hroot/cybernetics:/cybernetics:rw       # read-write working vault
-      # Pi agent state (auth, sessions, settings) — shared rw with host so sessions sync
-      - /home/ankit/.pi:/home/ankit/.pi:rw
     ports:
       - "127.0.0.1:18789:18789"      # gateway; LAN/TLS via Caddy
       # Web-app preview range. Bound to 0.0.0.0 (no 127.0.0.1: prefix) so LAN/

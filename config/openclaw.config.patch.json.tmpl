@@ -3,9 +3,9 @@
     "servers": {
       "mcpproxy": {
         "transport": "streamable-http",
-        "url": "${MCPPROXY_GATEWAY_URL}",
+        "url": "https://mcp.dev.ankitson.com/mcp",
         "headers": {
-          "Authorization": "Bearer ${MCPPROXY_AGENT_TOKEN}"
+          "Authorization": "Bearer {{ op://clankers/mcpproxy-agents/password }}"
         }
       }
     }
