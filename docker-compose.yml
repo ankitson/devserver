@@ -217,6 +217,35 @@ services:
     security_opt:
       - seccomp:unconfined
 
+  # ── OpenClaw app runner: least-privilege web app deployment surface ─
+  # OpenClaw writes app code + apps.json under Cybernetics; this service runs
+  # only those apps and exposes a single router for Caddy's dev wildcard.
+  openclaw-app-runner:
+    image: ankit/devbox:latest
+    container_name: openclaw-app-runner
+    hostname: openclaw-app-runner
+    user: "1000:1000"
+    restart: unless-stopped
+    entrypoint: ["bun", "run", "/runner/runner.ts"]
+    environment:
+      - WORKSPACE_DIR=/workspace
+      - CONFIG_PATH=/workspace/apps.json
+      - HOST_SUFFIX=.dev.ankitson.com
+      - ROUTER_PORT=8080
+      - PORT_START=9101
+      - PORT_END=9199
+      - EXTRA_PATH=/home/ankit/.local/bin
+    volumes:
+      - ./config/openclaw-app-runner/runner.ts:/runner/runner.ts:ro
+      - /home/ankit/hroot/cybernetics/agents/openclaw-webapps:/workspace:rw
+    ports:
+      - "127.0.0.1:18880:8080"      # local debug; LAN/TLS via Caddy dev wildcard
+    healthcheck:
+      test: ["CMD", "bun", "-e", "const r=await fetch('http://127.0.0.1:8080/_openclaw/health'); process.exit(r.ok?0:1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
   # ── Speaches: faster-whisper STT server, OpenAI-compatible /v1/audio/transcriptions ─
   # Internal-only (no LAN port) — reached via mybridge from openclaw / hermes / litellm.
   # Default WHISPER__MODEL is what `model=""` requests resolve to; clients can override

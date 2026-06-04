@@ -73,6 +73,16 @@ upgrade-openclaw version="":
   echo
   docker exec openclaw bash -lc 'openclaw --version' 2>/dev/null | grep -v "Agent mode" | head -1 || true
 
+# ── OpenClaw web app deployment surface ────────────────────────────
+openclaw-apps-up:
+  {{COMPOSE}} up -d --no-deps openclaw-app-runner
+
+openclaw-apps-logs:
+  {{COMPOSE}} logs -f openclaw-app-runner
+
+openclaw-apps-smoke slug="hello-openclaw":
+  curl -fsS -H "Host: {{slug}}.dev.ankitson.com" http://127.0.0.1:18880/
+
 # ── Speaches-specific (no generic compose equivalent) ────────────────
 # Preload the default whisper model (downloads weights if not cached).
 speaches-pull model="deepdml/faster-whisper-large-v3-turbo-ct2":
