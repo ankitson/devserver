@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# psql into the pipeline_dagster database. psql isn't installed on the host, so
+# this runs inside the `postgres` docker container (trust auth on the local
+# socket -> no password needed). Extra args pass through to psql, e.g.:
+#   dagster-psql                      # interactive shell
+#   dagster-psql -c "select now()"    # one-shot query
+#   dagster-psql -At -c "select 1"    # scriptable output
+set -euo pipefail
+flags=(-i)
+[ -t 0 ] && flags+=(-t)   # add a TTY only when run interactively
+exec docker exec "${flags[@]}" postgres psql -U postgres -d pipeline_dagster "$@"
