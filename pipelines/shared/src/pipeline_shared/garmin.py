@@ -26,7 +26,7 @@ import threading
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Callable, Iterator
 
 import psycopg
@@ -201,6 +201,11 @@ def _get_raw_from_pipeline_or_source(
       2. If absent, look in the source garmin DB (the existing garmin-fetch
          cron job's accumulated cache) — and seed it into the pipeline DB.
 
+    The source DB is optional/legacy: after the DB consolidation it may not
+    exist. An unreachable source is treated as a cache-miss (returns None),
+    not a fatal error — otherwise an uncached metric (e.g. `activities`) would
+    crash the whole reparse, including the scheduled hr-samples asset.
+
     Returns the deserialized response, or None if not found anywhere.
     """
     found = target_store.get_raw_response(date_str, metric)
@@ -208,13 +213,17 @@ def _get_raw_from_pipeline_or_source(
         return found
     if source_url == target_store.database_url:
         return None
-    with psycopg.connect(source_url) as src:
-        with src.cursor() as cur:
-            cur.execute(
-                "SELECT response, fetched_at FROM raw_responses WHERE date=%s AND metric=%s",
-                (date_str, metric),
-            )
-            row = cur.fetchone()
+    try:
+        with psycopg.connect(source_url) as src:
+            with src.cursor() as cur:
+                cur.execute(
+                    "SELECT response, fetched_at FROM raw_responses WHERE date=%s AND metric=%s",
+                    (date_str, metric),
+                )
+                row = cur.fetchone()
+    except psycopg.OperationalError as e:
+        log.debug("source garmin DB unreachable (%s); treating as cache-miss", e)
+        return None
     if not row:
         return None
     response_text, fetched_at = row
@@ -356,6 +365,79 @@ def fetch_metric(
             return FetchResult(metric, date_str, "no_data", "api")
         _upsert_parsed(store, metric, date_str, parsed)
         return FetchResult(metric, date_str, "ok", "api", parsed_rows=1)
+
+
+# A day whose sleep row exists but has a NULL score has been fetched yet Garmin
+# has no score for it. That's either a not-yet-synced gap (worth retrying) or a
+# night the watch wasn't worn (will never have a score). We can't tell them
+# apart, so we retry — but only if the last fetch is older than this, so a
+# permanently-scoreless night isn't refetched on every single daily run.
+HEAL_RETRY_NULL_HOURS = 60
+
+
+def find_missing_sleep_days(database_url: str, dates: list[str]) -> list[str]:
+    """Of the given dates, return those still worth a re-fetch.
+
+    A day qualifies if it has no `sleep` row at all, or its row has a NULL
+    `sleep_score` AND was last fetched more than HEAL_RETRY_NULL_HOURS ago.
+    The all-null `dailySleepDTO` Garmin serves until the watch syncs is the
+    signature this heals; the staleness guard stops permanently-scoreless
+    nights from being refetched every day until they age out of the window.
+    """
+    missing: list[str] = []
+    with psycopg.connect(database_url) as conn, conn.cursor() as cur:
+        for date_str in dates:
+            cur.execute(
+                "SELECT sleep_score IS NULL,"
+                " (fetched_at IS NULL OR fetched_at < now() - make_interval(hours => %s))"
+                " FROM sleep WHERE date = %s",
+                (HEAL_RETRY_NULL_HOURS, date_str),
+            )
+            row = cur.fetchone()
+            if row is None:
+                missing.append(date_str)        # never fetched
+            elif row[0] and row[1]:
+                missing.append(date_str)         # null score + stale fetch
+    return missing
+
+
+def heal_missing_days(
+    run: GarminRun,
+    database_url: str,
+    *,
+    window_days: int = 10,
+    today: date | None = None,
+) -> dict:
+    """Force a live re-fetch of recent days that are still missing sleep data.
+
+    Walks the window [today-window_days, today-1] (today is skipped — it's
+    still in progress), and for each day with no sleep score, force-refetches
+    all metrics + heart_rate_samples and refreshes the derived rollups. Days
+    that already have data cost only a single SELECT — so steady-state is ~free
+    and real API work happens only when there's an actual gap to fill.
+
+    Requires `garmin_live_fetch`; otherwise returns without touching the API.
+    """
+    from pipeline_shared.derived import refresh_derived_for_day
+
+    today = today or date.today()
+    window = [
+        (today - timedelta(days=n)).isoformat()
+        for n in range(1, window_days + 1)
+    ]
+    if not run.settings.garmin_live_fetch:
+        return {"window": window, "missing": [], "healed": [], "skipped": "live_fetch_off"}
+
+    missing = find_missing_sleep_days(database_url, window)
+    healed = []
+    for date_str in missing:
+        results = [fetch_metric(run, date_str, m, force_api=True) for m in METRIC_NAMES]
+        results.append(_reparse_hr_samples(run, date_str))
+        refresh_derived_for_day(database_url, date_str)
+        ok = sum(1 for r in results if r.status == "ok")
+        healed.append({"date": date_str, "ok": ok})
+        log.info("healed %s (ok=%d)", date_str, ok)
+    return {"window": window, "missing": missing, "healed": healed}
 
 
 def record_run(

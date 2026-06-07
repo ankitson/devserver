@@ -52,6 +52,24 @@ pipeline-reparse pipeline="dbos" date="2026-05-15":
   docker exec pipeline-{{pipeline}} bash -lc \
     "cd /app/shared && uv run pipeline-shared reparse {{date}}"
 
+# Force a live Garmin re-fetch for a date range (default: just <start>).
+# Unlike reparse (cache-only) and asset materialization (forces today+yesterday
+# only), this bypasses the cache and overwrites stale/empty stubs with fresh
+# API data for ANY past day — use after a device-sync gap. Needs GARMIN_LIVE_FETCH.
+#   just pipelines garmin-refetch 2026-06-02
+#   just pipelines garmin-refetch 2026-06-02 2026-06-04
+garmin-refetch start end="" pipeline="dagster":
+  docker exec pipeline-{{pipeline}} bash -lc \
+    "cd /app/shared && uv run pipeline-shared refetch {{start}} {{end}}"
+
+# Heal gaps: refetch ONLY days in the last <window> still missing sleep data.
+# Same logic the daily garmin_heal_schedule runs; this is the manual trigger.
+#   just pipelines garmin-heal          # last 10 days
+#   just pipelines garmin-heal 14
+garmin-heal window="10" pipeline="dagster":
+  docker exec pipeline-{{pipeline}} bash -lc \
+    "cd /app/shared && uv run pipeline-shared heal --window {{window}}"
+
 # Trigger a bank import end-to-end for a given pipeline. The pipeline-specific
 # approval URL is printed; supply the OTP from `just mock-otp` to complete.
 bank-import-dbos:

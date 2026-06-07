@@ -20,6 +20,8 @@ from pipeline_shared.garmin import (
     fetch_metric,
     reparse_metric,
     reparse_day,
+    heal_missing_days,
+    find_missing_sleep_days,
 )
 from pipeline_shared.schema import ensure_schema
 from pipeline_shared.notifier import Notifier
@@ -47,6 +49,8 @@ __all__ = [
     "fetch_metric",
     "reparse_metric",
     "reparse_day",
+    "heal_missing_days",
+    "find_missing_sleep_days",
     "ensure_schema",
     "Notifier",
     "refresh_derived_for_day",

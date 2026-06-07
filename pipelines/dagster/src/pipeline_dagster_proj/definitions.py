@@ -102,6 +102,49 @@ def garmin_daily_schedule(context):
     ]
 
 
+# Gap-healing — daily force-refetch of recent days still missing sleep data.
+# The daily schedule above only force-refetches today + yesterday; a watch that
+# syncs late (Garmin serves an all-null dailySleepDTO until the device uploads,
+# sometimes several days later) leaves a permanent hole in the deeper tail that
+# nothing revisits. This walks the last HEAL_WINDOW_DAYS and refetches ONLY the
+# days with no sleep score — a handful of SELECTs in steady state, real API work
+# only on an actual gap. Tagged garmin_api so the QueuedRunCoordinator serialises
+# it against garmin_full_job (no parallel logins / rate-limit collisions).
+HEAL_WINDOW_DAYS = 10
+
+
+@op(tags={"dagster/concurrency_key": "garmin_api"})
+def garmin_heal_op(context, garmin: GarminPipelineResource) -> None:
+    from pipeline_shared import heal_missing_days
+    run = garmin.make_run(context.run_id)
+    result = heal_missing_days(
+        run, garmin.settings().database_url, window_days=HEAL_WINDOW_DAYS,
+    )
+    context.log.info(
+        "garmin heal: window=%s..%s missing=%s healed=%s",
+        result["window"][-1], result["window"][0],
+        result["missing"] or "none", result["healed"] or "none",
+    )
+
+
+@job(tags={"dagster/concurrency_key": "garmin_api"})
+def garmin_heal_job():
+    garmin_heal_op()
+
+
+# Daily at 06:00 UTC — before the 08:00 daily fetch. default_status STOPPED to
+# match garmin_daily_schedule; start it from the UI alongside the daily one.
+@schedule(
+    cron_schedule="0 6 * * *",
+    job=garmin_heal_job,
+    default_status=DefaultScheduleStatus.STOPPED,
+)
+def garmin_heal_schedule(context):
+    return RunRequest(
+        run_key=f"garmin-heal-{context.scheduled_execution_time:%Y%m%d}"
+    )
+
+
 # birdclaw sync — Dagster as a plain scheduler for `docker exec` into the
 # app-runner container (which owns birdclaw + its SQLite). Needs the Docker
 # socket mounted into pipeline-dagster + a docker CLI in the image. Hourly,
@@ -183,11 +226,12 @@ def birdclaw_bookmarks_import_schedule(context):
 defs = Definitions(
     assets=all_assets,
     asset_checks=asset_checks,
-    jobs=[garmin_full_job, bank_login_job, bank_resume_job,
+    jobs=[garmin_full_job, garmin_heal_job, bank_login_job, bank_resume_job,
           playnite_gameactivity_job, landing_zone_gc_job,
           aoe4_replays_copy_job, birdclaw_sync_bookmarks_job,
           birdclaw_bookmarks_import_job],
-    schedules=[garmin_daily_schedule, landing_zone_gc_schedule,
+    schedules=[garmin_daily_schedule, garmin_heal_schedule,
+               landing_zone_gc_schedule,
                birdclaw_sync_bookmarks_schedule,
                birdclaw_bookmarks_import_schedule],
     sensors=[bank_otp_sensor, notifier_sensor, playnite_landing_sensor,

@@ -5,6 +5,8 @@ Subcommands:
   seed [--start D --end D]        copy raw_responses from source garmin DB
   reparse <date>                  reparse all 7 metrics for a single day
   reparse-range <start> <end>     reparse for a date range
+  refetch <start> [end]           force a live API re-fetch (overwrites cache)
+  heal [--window N]               refetch only recent days missing sleep data
   derive <date>                   compute derived_daily + rolling for one date
   detect <date>                   run anomaly detection for one date
   notify                          drain the notifications queue
@@ -29,11 +31,13 @@ from pipeline_shared import (
     Notifier,
     detect_anomalies_for_day,
     ensure_schema,
+    fetch_metric,
     load_settings,
     refresh_derived_for_day,
     reparse_day,
     seed_raw_responses_from_garmin,
 )
+from pipeline_shared.garmin import _reparse_hr_samples, heal_missing_days
 from pipeline_shared.seed import list_available_dates
 
 
@@ -90,6 +94,43 @@ def cmd_reparse_range(args: argparse.Namespace) -> int:
         print(f"{d.isoformat()}  ok={ok}  skipped={skipped}  error={errored}")
         d += timedelta(days=1)
     print(f"\ntotal ok: {total}")
+    return 0
+
+
+def cmd_refetch(args: argparse.Namespace) -> int:
+    s = load_settings()
+    if not s.garmin_live_fetch:
+        print("refusing: GARMIN_LIVE_FETCH is false — nothing would hit the API", file=sys.stderr)
+        return 2
+    run = _make_run(tool=args.tool)
+    end = date.fromisoformat(args.end) if args.end else date.fromisoformat(args.start)
+    d = date.fromisoformat(args.start)
+    total = 0
+    while d <= end:
+        date_str = d.isoformat()
+        results = [fetch_metric(run, date_str, m, force_api=True) for m in METRIC_NAMES]
+        results.append(_reparse_hr_samples(run, date_str))
+        ok = sum(1 for r in results if r.status == "ok")
+        no_data = sum(1 for r in results if r.status in ("no_data", "no_raw"))
+        errored = sum(1 for r in results if r.status.startswith("error"))
+        total += ok
+        refresh_derived_for_day(s.database_url, date_str)
+        print(f"{date_str}  ok={ok}  no_data={no_data}  error={errored}")
+        d += timedelta(days=1)
+    print(f"\ntotal ok: {total}")
+    return 0
+
+
+def cmd_heal(args: argparse.Namespace) -> int:
+    s = load_settings()
+    run = _make_run(tool=args.tool)
+    result = heal_missing_days(run, s.database_url, window_days=args.window)
+    print(f"window: {result['window'][-1]}..{result['window'][0]} ({args.window}d)")
+    print(f"missing: {result['missing'] or 'none'}")
+    for h in result["healed"]:
+        print(f"  healed {h['date']}  ok={h['ok']}")
+    if result.get("skipped"):
+        print(f"skipped: {result['skipped']}")
     return 0
 
 
@@ -164,6 +205,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     sp = sub.add_parser("reparse"); sp.add_argument("date")
     sp = sub.add_parser("reparse-range"); sp.add_argument("start"); sp.add_argument("end")
+    sp = sub.add_parser("refetch"); sp.add_argument("start"); sp.add_argument("end", nargs="?", default=None)
+    sp = sub.add_parser("heal"); sp.add_argument("--window", type=int, default=10)
     sp = sub.add_parser("derive"); sp.add_argument("date")
     sp = sub.add_parser("detect"); sp.add_argument("date")
     sp = sub.add_parser("notify"); sp.add_argument("--push", action="store_true", default=True)
@@ -178,6 +221,8 @@ HANDLERS = {
     "seed": cmd_seed,
     "reparse": cmd_reparse,
     "reparse-range": cmd_reparse_range,
+    "refetch": cmd_refetch,
+    "heal": cmd_heal,
     "derive": cmd_derive,
     "detect": cmd_detect,
     "notify": cmd_notify,

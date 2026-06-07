@@ -1,5 +1,43 @@
 # Devserver Changelog
 
+## 2026-06-07 — `garmin-refetch`: force a live re-fetch for past days
+Added an escape hatch for back-dated days whose cache holds stale/empty
+payloads (e.g. after a watch-sync gap, Garmin returns all-null `dailySleepDTO`
+stubs that get cached). Neither existing tool could fix these: `reparse` is
+cache-only (re-reads the same empty stub) and asset materialization only
+force-refetches today + yesterday.
+
+- `pipeline_shared.cli refetch <start> [end]` — calls
+  `fetch_metric(..., force_api=True)` across all 7 metrics (bypassing +
+  overwriting the cache with a live API call), then reparses heart_rate_samples
+  and refreshes derived rollups. Guards on `GARMIN_LIVE_FETCH`.
+- `just pipelines garmin-refetch <start> [end]` — one-liner wrapper (`end`
+  defaults to `start`).
+- Bugfix: `_get_raw_from_pipeline_or_source` now treats an unreachable source
+  garmin DB as a cache-miss instead of crashing. The legacy `garmin` DB was
+  removed during consolidation but `GARMIN_SOURCE_DATABASE_URL` may still point
+  at it; an uncached metric (e.g. `activities`) previously took down the whole
+  hr-samples reparse, including the scheduled asset.
+
+### Automatic gap-healing (daily)
+The daily schedule only force-refetches today + yesterday, so a late watch sync
+left a permanent hole in the deeper tail. Added a self-healing pass:
+
+- `pipeline_shared.garmin.heal_missing_days(run, db, window_days=10)` +
+  `find_missing_sleep_days` — walk the last N days, refetch ONLY days with no
+  `sleep_score` (no row or NULL = the watch-sync-gap signature). Steady state is
+  a handful of SELECTs; real API work happens only on an actual gap. A
+  null-score day is retried only if last fetched >60h ago
+  (`HEAL_RETRY_NULL_HOURS`), so a night the watch wasn't worn (permanently
+  scoreless) isn't refetched on every daily run until it ages out of the window.
+- `garmin_heal_job` + `garmin_heal_schedule` (Dagster) — daily at 06:00 UTC,
+  tagged `dagster/concurrency_key=garmin_api` so it serialises against
+  `garmin_full_job`. `default_status=STOPPED` to match `garmin_daily_schedule` —
+  **start it from the Dagit UI** (or `dagster schedule start
+  garmin_heal_schedule`) to enable.
+- `pipeline-shared heal [--window N]` / `just pipelines garmin-heal [N]` — manual
+  trigger of the same logic.
+
 ## 2026-05-23 — Removed custom X/Twitter bookmarks pipeline + viewer
 Retired the hand-rolled X bookmarks stack (`pipeline_shared.x_bookmarks`, the
 DBOS workflow/schedule/endpoints, the `x_*` Postgres tables, the `x-*` CLI
