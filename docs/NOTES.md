@@ -85,3 +85,26 @@ contract, and pending work. Full detail:
   approves Fastmail's discovered tools so downstream clients can see them.
 - **OpenClaw config**: the OpenClaw patch reads `${MCPPROXY_GATEWAY_URL}` from `openclaw.env`
   instead of hardcoding the gateway endpoint in `openclaw.config.patch.json`.
+
+## 2026-06-04 - OpenClaw config patch startup failure
+- **Symptom**: `openclaw` was in a Docker restart loop with exit code `1`; logs only repeated
+  `TypeError: Invalid URL`.
+- **Root cause**: the entrypoint failed before `openclaw gateway`, during
+  `openclaw config patch --file /run/openclaw/openclaw.config.patch.json`. OpenClaw 2026.5.28 no
+  longer expands literal `${...}` placeholders in config patches, so the raw
+  `${MCPPROXY_GATEWAY_URL}` value was parsed as a URL and crashed patch application.
+- **Fix**: moved the MCPProxy patch to `config/openclaw.config.patch.json.tmpl` and render it with
+  the existing `render-secrets` / `just rs` flow into `secrets/openclaw.config.patch.json`, which
+  contains a literal URL and rendered bearer header at container startup.
+
+## 2026-06-04 - OpenClaw web app runner
+- **Goal**: let OpenClaw publish static pages and small backend web apps without Docker socket access
+  or write access to homeserver infrastructure.
+- **Decision**: added `openclaw-app-runner` to devserver. It reads app code and `apps.json` from
+  `/home/ankit/hroot/cybernetics/agents/openclaw-webapps`, serves static apps, starts small process
+  apps, and exposes one router on `mybridge`.
+- **Routing**: Caddy's `*.dev.ankitson.com` explicit routes keep precedence; the final fallback now
+  proxies unknown dev subdomains to `openclaw-app-runner`, which serves configured app slugs or
+  returns its own 404.
+- **Follow-ups**: see `docs/2026-06-04-openclaw-webapps/ADR.md` for workspace/AGENTS consolidation
+  decisions to evaluate after the runner is live.

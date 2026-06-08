@@ -48,3 +48,17 @@ Recipes: `just oc-build` / `oc-up` / `oc-logs` / `ab-logs`. Caddy routes:
   `mcpproxy`, because the OAuth callback is bound to `127.0.0.1`.
 - Moved OpenClaw's MCPProxy endpoint into `config/openclaw.env.tmpl` as `MCPPROXY_GATEWAY_URL` and
   made `config/openclaw.config.patch.json` reference that env var.
+
+### OpenClaw config patch rendering (2026-06-04)
+- Replaced the static OpenClaw MCPProxy patch with `config/openclaw.config.patch.json.tmpl`.
+- Mounted the rendered `secrets/openclaw.config.patch.json` into the OpenClaw container so
+  OpenClaw receives literal JSON instead of unsupported `${...}` placeholders.
+
+### OpenClaw app runner (2026-06-04)
+- Added `config/openclaw-app-runner/runner.ts`, a small static/process web app router for OpenClaw
+  deployments.
+- Added the `openclaw-app-runner` devserver Compose service, mounted to the Cybernetics deployment
+  workspace.
+- Added Just recipes for starting, logging, and smoke-testing OpenClaw web apps.
+- Documented the deployment contract and follow-up workspace decisions in
+  `docs/2026-06-04-openclaw-webapps/`.
