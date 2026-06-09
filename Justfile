@@ -72,6 +72,26 @@ upgrade-openclaw version="":
   {{COMPOSE}} up -d --no-deps openclaw
   echo
   docker exec openclaw bash -lc 'openclaw --version' 2>/dev/null | grep -v "Agent mode" | head -1 || true
+  echo
+  echo "── openclaw doctor (pending migrations — NOT auto-applied) ──────────"
+  # This rebuild path only swaps the binary + re-applies the config patch; it does
+  # NOT run version migrations. A bump can move stores (e.g. cron jobs.json → SQLite)
+  # and silently strand data. Surface them here so you apply them deliberately.
+  sleep 5   # let the gateway finish starting before doctor inspects state
+  docker exec openclaw openclaw doctor 2>&1 | grep -v "Agent mode detected. Run" || true
+  echo
+  echo "⚠️  REVIEW the doctor output above. If it lists changes, apply them with:"
+  echo "        just openclaw-doctor-fix"
+  echo "    (rewrites config/auth/session state — read 'just openclaw-doctor' first)."
+
+# Surface pending OpenClaw migrations / config issues (read-only, safe).
+openclaw-doctor:
+  docker exec openclaw openclaw doctor
+
+# Apply OpenClaw migrations (rewrites config/auth/session state; review openclaw-doctor first).
+openclaw-doctor-fix:
+  # cron jobs.json->SQLite import only triggers if a legacy ~/.openclaw/cron/jobs.json exists.
+  docker exec openclaw openclaw doctor --fix
 
 # ── OpenClaw web app deployment surface ────────────────────────────
 openclaw-apps-up:

@@ -8,6 +8,13 @@ Garmin / banking / Playnite / AoE4-replay / X-bookmarks pipelines on Dagster
 (+ DBOS / Restate experiments). Full detail:
 [`pipelines/docs/CHANGELOG.md`](../pipelines/docs/CHANGELOG.md).
 
+## OpenClaw auth doctor helpers (2026-06-09)
+- Added `just openclaw-doctor` and `just openclaw-doctor-fix` recipes, and made
+  `just upgrade-openclaw` surface pending OpenClaw migrations after rebuilding.
+- Pinned OpenClaw's preferred OpenAI auth profile through the rendered config patch, composing the
+  `openai:` profile prefix with a 1Password-backed username reference so the tracked template
+  contains no private email address.
+
 ## MCPProxy code-mode enabled (2026-06-09)
 - Set `enable_code_execution: true` and `code_execution_timeout_ms: 600000` (10 min) in both
   `config/mcpproxy.seed.json` and the live `/data/mcp_config.json` (volume `mcpproxy_data`;
