@@ -9,5 +9,26 @@
         }
       }
     }
+  },
+  "agents": {
+    "list": [
+      { "id": "main", "workspace": "/cybernetics/agents/main", "default": true },
+      { "id": "gilfoyle", "name": "gilfoyle", "workspace": "/cybernetics/agents/gilfoyle" }
+    ]
+  },
+  "bindings": [
+    { "match": { "channel": "discord", "peer": { "kind": "channel", "id": "1513643336161034402" } }, "agentId": "gilfoyle" }
+  ],
+  "channels": {
+    "discord": {
+      "thread": { "inheritParent": false },
+      "guilds": {
+        "911234218556796938": {
+          "channels": {
+            "1513643336161034402": { "requireMention": false }
+          }
+        }
+      }
+    }
   }
 }

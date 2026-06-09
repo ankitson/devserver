@@ -179,6 +179,16 @@ services:
       # Obsidian vaults — match Hermes mount paths so agent prompts can refer to them consistently
       - /home/ankit/hroot/allplace:/allplace:ro             # read-only reference vault
       - /home/ankit/hroot/cybernetics:/cybernetics:rw       # read-write working vault
+      # gilfoyle ops loops: full Docker socket (watch + act on host containers) and the
+      # infra compose files so `docker compose pull/up` resolves service definitions.
+      # The socket = host root; gilfoyle's workspace policy gates every write on an
+      # explicit Discord approval (see /cybernetics/agents/gilfoyle/AGENTS.md).
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /home/ankit/hroot/homeserver:/hroot/homeserver:rw
+      - /home/ankit/hroot/devserver:/hroot/devserver:rw
+    # Host `docker` group (gid 998) so the `ankit` user inside can reach the socket.
+    group_add:
+      - "998"
     ports:
       - "127.0.0.1:18789:18789"      # gateway; LAN/TLS via Caddy
       # Web-app preview range. Bound to 0.0.0.0 (no 127.0.0.1: prefix) so LAN/

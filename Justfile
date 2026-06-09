@@ -188,3 +188,28 @@ mcpproxy-smoke:
     --header "Content-Type: application/json" \
     --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"devserver-smoke","version":"1.0.0"}}}'
   echo
+
+# ── gilfoyle: homeserver ops agent (cron-driven loops) ──────────────────
+# Workspace: /cybernetics/agents/gilfoyle/. Surfaces to Discord #homeserver-ops.
+
+# (Re)register gilfoyle's cron jobs in the running gateway. Idempotent by name.
+gil-cron-setup:
+  bin/setup-gilfoyle-cron.sh
+
+# List gilfoyle's scheduled jobs.
+gil-cron-list:
+  docker exec openclaw openclaw cron list --agent gilfoyle
+
+# Force-run a loop now by job name and wait for terminal status.
+# Usage: just gil-loop gilfoyle-health-watch
+gil-loop name:
+  #!/usr/bin/env bash
+  set -euo pipefail
+  id="$(docker exec openclaw openclaw cron list --agent gilfoyle --json \
+    | python3 -c 'import json,sys; d=json.load(sys.stdin); jobs=d.get("jobs",d) if isinstance(d,dict) else d; print(next((j["id"] for j in jobs if j.get("name")=="{{name}}"), ""))')"
+  if [ -z "$id" ]; then echo "No gilfoyle job named {{name}} (run: just gil-cron-setup)" >&2; exit 1; fi
+  docker exec openclaw openclaw cron run "$id" --wait --wait-timeout 10m --poll-interval 2s
+
+# Follow gilfoyle's gateway logs.
+gil-logs:
+  {{COMPOSE}} logs -f openclaw
