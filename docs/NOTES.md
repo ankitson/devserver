@@ -8,6 +8,18 @@ Production status, Garmin API quirks, auth/rate-limit notes, landing-zone
 contract, and pending work. Full detail:
 [`pipelines/docs/NOTES.md`](../pipelines/docs/NOTES.md).
 
+## 2026-06-09 - MCPProxy code-mode and full private route
+- **Code execution**: `enable_code_execution` is on in both the live MCPProxy config and
+  `config/mcpproxy.seed.json`; `code_execution_timeout_ms` is 600000 (10 minutes).
+- **Reproducible upstreams**: the seed now includes `exa`, `fastmail`, and the live `websets`
+  upstream so a fresh `mcpproxy_data` volume recreates the current server list.
+- **Caddy exposure**: homeserver Caddy now proxies the full `mcp.dev.ankitson.com` host through
+  `private_only`, including `/mcp/code`, `/ui/`, and `/api/v1/*`. MCP routes still use downstream
+  bearer tokens; admin API calls still require `MCPPROXY_API_KEY`.
+- **Routing detail**: MCPProxy remains host-networked for loopback OAuth callbacks. Homeserver Caddy
+  maps `mcpproxy` to the `mybridge` host gateway with `extra_hosts` and uses
+  `reverse_proxy mcpproxy:3130`.
+
 ## OpenClaw + agent-browser
 - **Two services**:
   - `openclaw` — gateway, thin `docker/openclaw/` image (`FROM ankit/devbox`).

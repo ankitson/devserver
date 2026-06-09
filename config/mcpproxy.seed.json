@@ -4,7 +4,8 @@
   "enable_socket": true,
   "require_mcp_auth": true,
   "routing_mode": "direct",
-  "enable_code_execution": false,
+  "enable_code_execution": true,
+  "code_execution_timeout_ms": 600000,
   "telemetry": {
     "enabled": false
   },
@@ -35,6 +36,19 @@
         "extra_params": {
           "resource": "https://api.fastmail.com/mcp"
         }
+      },
+      "enabled": true
+    },
+    {
+      "name": "websets",
+      "protocol": "stdio",
+      "command": "sh",
+      "args": [
+        "-lc",
+        "exec npx -y mcp-remote \"https://websetsmcp.exa.ai/mcp?exaApiKey=$EXA_API_KEY\""
+      ],
+      "env": {
+        "EXA_API_KEY": "${env:EXA_API_KEY}"
       },
       "enabled": true
     }

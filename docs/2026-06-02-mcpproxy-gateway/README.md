@@ -64,8 +64,18 @@ MCPPROXY_AGENT_TOKEN="$(op read 'op://clankers/mcpproxy-agents/password')" just 
 | `https://mcp.dev.ankitson.com/mcp` | Default direct route for ordinary MCP clients |
 | `https://mcp.dev.ankitson.com/mcp/all` | Explicit direct route |
 | `https://mcp.dev.ankitson.com/mcp/call` | Retrieval route for large catalogs and model tool limits |
+| `https://mcp.dev.ankitson.com/mcp/code` | Code-execution ("code-mode"): JS/TS that orchestrates many upstream tools per request |
+| `https://mcp.dev.ankitson.com/ui/` | MCPProxy web UI |
+| `https://mcp.dev.ankitson.com/api/v1/*` | MCPProxy administration API; requires `MCPPROXY_API_KEY` |
 
-The private Caddy route intentionally does not expose `/ui/`, `/api/v1/*`, or `/mcp/code`.
+The private Caddy route proxies the whole `mcp.dev.ankitson.com` host through `private_only`, so
+all MCPProxy endpoints are reachable from the private network. MCP routes still require downstream
+bearer tokens, and the admin API still requires `MCPPROXY_API_KEY`.
+
+Code-mode is gated by `enable_code_execution` in the gateway config and runs each script
+in a sandbox (no `require`, timers, filesystem, network, or env access) exposing
+`input` and `call_tool(server, tool, args)`. `code_execution_timeout_ms` is 600000 (10 min).
+Scope a request with `--allowed-servers` / `--max-tool-calls` to bound blast radius.
 
 ## Persistent state
 
@@ -84,8 +94,8 @@ downstream token state together.
 4. Generate and store the scoped agent token.
 5. Run authenticated `initialize` and `tools/list` requests through local and private HTTPS routes.
 6. Call a harmless Fastmail read tool, restart `mcpproxy`, and repeat the read call.
-7. Confirm `/ui/` and `/api/v1/status` return `404` through Caddy and port `3130` is absent from the
-   LAN interface.
+7. Confirm `/ui/` and `/api/v1/status` are reachable through Caddy and port `3130` is absent from
+   the LAN interface.
 
 The previous LiteLLM Fastmail experiment stays isolated on its existing POC branch. Remove the
 orphaned `fastmail-mcp` bridge container only after this gateway passes smoke tests.

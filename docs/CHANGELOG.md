@@ -8,6 +8,16 @@ Garmin / banking / Playnite / AoE4-replay / X-bookmarks pipelines on Dagster
 (+ DBOS / Restate experiments). Full detail:
 [`pipelines/docs/CHANGELOG.md`](../pipelines/docs/CHANGELOG.md).
 
+## MCPProxy code-mode enabled (2026-06-09)
+- Set `enable_code_execution: true` and `code_execution_timeout_ms: 600000` (10 min) in both
+  `config/mcpproxy.seed.json` and the live `/data/mcp_config.json` (volume `mcpproxy_data`;
+  prior config backed up at `/data/mcp_config.json.bak`).
+- Restarted mcpproxy and verified the sandbox executes via `mcpproxy code exec --config /data/mcp_config.json`.
+- Caddy `/mcp/code` route added in the homeserver repo (`volumes/caddy/dev.Caddyfile`).
+- Added the live `websets` upstream to `config/mcpproxy.seed.json` so fresh volumes recreate it.
+- Updated the homeserver Caddy route to proxy the full MCPProxy host, including `/ui/` and
+  `/api/v1/*`, behind the existing private-network gate.
+
 ## Agent container toolbox mounts (2026-05-29)
 - Mounted `/projects/toolbox` into `agent-devbox` at `/home/ankit/toolbox` and
   `/home/ankit/.agents` read-only, matching its read-only `/projects` workspace.
