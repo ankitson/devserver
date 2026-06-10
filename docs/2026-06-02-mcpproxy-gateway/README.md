@@ -61,9 +61,9 @@ MCPPROXY_AGENT_TOKEN="$(op read 'op://clankers/mcpproxy-agents/password')" just 
 
 | Endpoint | Purpose |
 |---|---|
-| `https://mcp.dev.ankitson.com/mcp` | Default direct route for ordinary MCP clients |
+| `https://mcp.dev.ankitson.com/mcp` | Default retrieval route for ordinary MCP clients |
 | `https://mcp.dev.ankitson.com/mcp/all` | Explicit direct route |
-| `https://mcp.dev.ankitson.com/mcp/call` | Retrieval route for large catalogs and model tool limits |
+| `https://mcp.dev.ankitson.com/mcp/call` | Explicit retrieval route for large catalogs and model tool limits |
 | `https://mcp.dev.ankitson.com/mcp/code` | Code-execution ("code-mode"): JS/TS that orchestrates many upstream tools per request |
 | `https://mcp.dev.ankitson.com/ui/` | MCPProxy web UI |
 | `https://mcp.dev.ankitson.com/api/v1/*` | MCPProxy administration API; requires `MCPPROXY_API_KEY` |
@@ -76,6 +76,10 @@ Code-mode is gated by `enable_code_execution` in the gateway config and runs eac
 in a sandbox (no `require`, timers, filesystem, network, or env access) exposing
 `input` and `call_tool(server, tool, args)`. `code_execution_timeout_ms` is 600000 (10 min).
 Scope a request with `--allowed-servers` / `--max-tool-calls` to bound blast radius.
+
+Default routing is `retrieve_tools` with `tools_limit: 5`, so `/mcp` injects the retrieval helper
+surface instead of every upstream tool. Use `/mcp/all` for clients that still need the full direct
+tool list.
 
 ## Persistent state
 

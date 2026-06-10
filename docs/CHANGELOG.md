@@ -19,6 +19,8 @@ Garmin / banking / Playnite / AoE4-replay / X-bookmarks pipelines on Dagster
 - Set `enable_code_execution: true` and `code_execution_timeout_ms: 600000` (10 min) in both
   `config/mcpproxy.seed.json` and the live `/data/mcp_config.json` (volume `mcpproxy_data`;
   prior config backed up at `/data/mcp_config.json.bak`).
+- Set the default `routing_mode` to `retrieve_tools` and capped retrieval results with
+  `tools_limit: 5`; `/mcp/all` remains available for direct all-tools routing.
 - Restarted mcpproxy and verified the sandbox executes via `mcpproxy code exec --config /data/mcp_config.json`.
 - Caddy `/mcp/code` route added in the homeserver repo (`volumes/caddy/dev.Caddyfile`).
 - Added the live `websets` upstream to `config/mcpproxy.seed.json` so fresh volumes recreate it.

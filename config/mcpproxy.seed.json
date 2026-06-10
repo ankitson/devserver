@@ -3,7 +3,8 @@
   "data_dir": "/data",
   "enable_socket": true,
   "require_mcp_auth": true,
-  "routing_mode": "direct",
+  "routing_mode": "retrieve_tools",
+  "tools_limit": 5,
   "enable_code_execution": true,
   "code_execution_timeout_ms": 600000,
   "telemetry": {

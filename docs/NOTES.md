@@ -11,6 +11,8 @@ contract, and pending work. Full detail:
 ## 2026-06-09 - MCPProxy code-mode and full private route
 - **Code execution**: `enable_code_execution` is on in both the live MCPProxy config and
   `config/mcpproxy.seed.json`; `code_execution_timeout_ms` is 600000 (10 minutes).
+- **Default routing**: `/mcp` uses `routing_mode: retrieve_tools` with `tools_limit: 5`; `/mcp/all`
+  remains the explicit direct all-tools route.
 - **Reproducible upstreams**: the seed now includes `exa`, `fastmail`, and the live `websets`
   upstream so a fresh `mcpproxy_data` volume recreates the current server list.
 - **Caddy exposure**: homeserver Caddy now proxies the full `mcp.dev.ankitson.com` host through
