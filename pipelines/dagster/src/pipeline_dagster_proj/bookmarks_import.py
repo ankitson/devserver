@@ -15,17 +15,19 @@ from __future__ import annotations
 import os
 import sqlite3
 from collections.abc import Iterable
+from pathlib import Path
 from typing import Any
 
 import psycopg
-from dagster import op, job
+from dagster import RetryPolicy, op, job
 
 from pipeline_shared.config import load_settings
 from pipeline_shared.schema import ensure_schema
 
 
-# Bind-mounted read-only from the homeserver compose. See
-# docker-compose.pipelines.yml `pipeline-dagster.volumes`.
+# Bind-mounted from the homeserver compose. The importer opens the DB with
+# mode=ro, but the mount itself must be writable so SQLite can create/use WAL
+# sidecar coordination files (`birdclaw.sqlite-wal` / `birdclaw.sqlite-shm`).
 BIRDCLAW_SQLITE_PATH = os.environ.get(
     "BIRDCLAW_SQLITE_PATH", "/birdclaw/birdclaw.sqlite"
 )
@@ -93,6 +95,13 @@ def _normalize_timestamp(value: Any) -> str | None:
     return text or None
 
 
+def _readonly_sqlite_uri(sqlite_path: str) -> str:
+    path = Path(sqlite_path)
+    if not path.is_absolute():
+        path = path.resolve()
+    return f"{path.as_uri()}?mode=ro"
+
+
 def _rows_for_upsert(cursor: sqlite3.Cursor) -> Iterable[dict[str, Any]]:
     for row in cursor:
         yield {
@@ -109,7 +118,7 @@ def _rows_for_upsert(cursor: sqlite3.Cursor) -> Iterable[dict[str, Any]]:
         }
 
 
-@op
+@op(retry_policy=RetryPolicy(max_retries=2, delay=60))
 def import_birdclaw_bookmarks_op(context) -> dict[str, int]:
     sqlite_path = BIRDCLAW_SQLITE_PATH
     if not os.path.exists(sqlite_path):
@@ -121,9 +130,9 @@ def import_birdclaw_bookmarks_op(context) -> dict[str, int]:
     settings = load_settings()
     ensure_schema(settings.database_url)
 
-    # mode=ro + immutable=0 reads the WAL alongside the main db without
-    # taking a write lock — safe while birdclaw is also using it.
-    sqlite_uri = f"file:{sqlite_path}?mode=ro"
+    # Keep the SQLite connection itself read-only while allowing SQLite's
+    # normal WAL read path to use the sidecar files on the writable mount.
+    sqlite_uri = _readonly_sqlite_uri(sqlite_path)
     src = sqlite3.connect(sqlite_uri, uri=True, isolation_level=None)
     src.row_factory = sqlite3.Row
     try:

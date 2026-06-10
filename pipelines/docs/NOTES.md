@@ -119,3 +119,17 @@
   shape would mirror Garmin: daily-partitioned, idempotent upserts.
   Keeper already syncs calendar into its own Postgres so the "source"
   could be Keeper's DB rather than a new API client.
+
+## 2026-06-10 — birdclaw bookmarks import failure
+
+`birdclaw_bookmarks_import_job` was failing with `sqlite3.OperationalError:
+unable to open database file` from the first SQLite query. The file existed and
+the schema still matched the importer; the failure was the WAL-mode SQLite DB
+being read through Dagster's read-only `/birdclaw` bind mount when SQLite
+needed sidecar state.
+
+`pipeline-dagster` now mounts the Birdclaw DB directory read-write so SQLite
+can use its normal WAL `-wal`/`-shm` sidecar path, while the importer opens
+`birdclaw.sqlite` itself with `mode=ro`. Verified with a queued Dagster run at
+`2026-06-10 01:41:53+00`: 1,047 rows read and upserted into
+`pipeline_dagster.x_bookmarks`.

@@ -1,5 +1,23 @@
 # Devserver Changelog
 
+## 2026-06-10 — Fix birdclaw bookmarks import WAL sidecar access
+
+`birdclaw_bookmarks_import_job` was failing hourly with
+`sqlite3.OperationalError: unable to open database file` even though
+`/birdclaw/birdclaw.sqlite` existed in the Dagster container. The source DB is
+WAL-mode SQLite on a read-only bind mount; when `birdclaw.sqlite-shm`/`-wal`
+sidecars are absent, SQLite may try to create sidecar state on the first query,
+which fails through the read-only mount.
+
+- Changed the Birdclaw bind mount in `pipeline-dagster` from read-only to
+  read-write so SQLite can use its normal WAL sidecar files.
+- Kept the importer connection itself read-only with `mode=ro`; the writable
+  mount is for SQLite coordination files, not application-level writes.
+- Added a small Dagster retry policy around the import op for transient
+  WAL/read contention.
+- Rebuilt/recreated `pipeline-dagster` and verified the import job upserts
+  1,047 bookmarks (`acct_primary`: 1,011; `acct_abiosno`: 36).
+
 ## 2026-06-07 — `garmin-refetch`: force a live re-fetch for past days
 Added an escape hatch for back-dated days whose cache holds stale/empty
 payloads (e.g. after a watch-sync gap, Garmin returns all-null `dailySleepDTO`
