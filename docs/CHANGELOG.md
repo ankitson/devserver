@@ -8,6 +8,21 @@ Garmin / banking / Playnite / AoE4-replay / X-bookmarks pipelines on Dagster
 (+ DBOS / Restate experiments). Full detail:
 [`pipelines/docs/CHANGELOG.md`](../pipelines/docs/CHANGELOG.md).
 
+## agent-sandbox: SSH workspace for the remote agent (2026-06-10)
+- Added the `agent-sandbox` compose service: a second `ankit/devbox:1.4` container, driven over
+  SSH from another machine instead of by Hermes. Purpose: give the remote agent a real
+  filesystem so large outputs land in files on the devserver instead of in model context.
+- Mounts: `/projects` read-only, `/projects/agent_out` read-write (new host dir), fresh
+  `agent_sandbox_home` volume. On `mybridge`, so it reaches mcpproxy (`172.19.0.1:3130`),
+  `agent-browser`, `speaches`, etc.
+- SSH published on port `2222` (key-only, `AllowUsers ankit`, `PermitRootLogin no` — hardening
+  baked into the devbox image). No GPU, no `seccomp:unconfined`, no OP service-account token —
+  least privilege relative to `agent-devbox`.
+- Removed the image-baked `id_ed25519` private key from the seeded home: this box only needs to
+  be SSH'd *into*, and the shared dev key would let a tenant pivot to other devboxes.
+- Added `just agent-sandbox-add-key` (authorize the remote agent's own pubkey) and
+  `just agent-sandbox-smoke` (SSH + write-mount check).
+
 ## OpenClaw auth doctor helpers (2026-06-09)
 - Added `just openclaw-doctor` and `just openclaw-doctor-fix` recipes, and made
   `just upgrade-openclaw` surface pending OpenClaw migrations after rebuilding.

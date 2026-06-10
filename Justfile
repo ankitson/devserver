@@ -209,6 +209,17 @@ mcpproxy-smoke:
     --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"devserver-smoke","version":"1.0.0"}}}'
   echo
 
+# ── agent-sandbox: SSH workspace for the remote agent ───────────────────
+# Authorize an additional public key for SSH into agent-sandbox.
+# Usage: just agent-sandbox-add-key "ssh-ed25519 AAAA... agent@host"
+agent-sandbox-add-key key:
+  docker exec agent-sandbox sh -c 'echo "{{key}}" >> /home/ankit/.ssh/authorized_keys && ssh-keygen -lf /home/ankit/.ssh/authorized_keys'
+
+# SSH reachability + write-mount smoke test (uses your local dev key).
+agent-sandbox-smoke:
+  ssh -o BatchMode=yes -p 2222 ankit@127.0.0.1 \
+    'echo ok: $(whoami)@$(hostname) && touch /projects/agent_out/.smoke && rm /projects/agent_out/.smoke && echo "agent_out writable"'
+
 # ── gilfoyle: homeserver ops agent (cron-driven loops) ──────────────────
 # Workspace: /cybernetics/agents/gilfoyle/. Surfaces to Discord #homeserver-ops.
 

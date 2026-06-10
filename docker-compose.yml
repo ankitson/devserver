@@ -89,6 +89,27 @@ services:
               count: 1
               capabilities: [gpu]
 
+  # ── Agent sandbox #2: SSH workspace for the remote agent ──────────────────
+  # Same devbox image as agent-devbox, but driven over SSH from another machine
+  # (port 2222 on the LAN/Tailscale interface; sshd is key-only, AllowUsers ankit).
+  # Purpose: real filesystem so large agent outputs land in files, not context.
+  # Writes go to /projects/agent_out (host: /projects/agent_out); the rest of
+  # /projects is read-only. On mybridge, so it can reach mcpproxy
+  # (http://172.19.0.1:3130), agent-browser, speaches, etc. by hostname/IP.
+  # No GPU, no seccomp:unconfined, no OP service-account token — least privilege.
+  agent-sandbox:
+    image: ankit/devbox:1.4
+    container_name: agent-sandbox
+    hostname: agent-sandbox
+    restart: unless-stopped
+    volumes:
+      - agent_sandbox_home:/home/ankit
+      - /projects:/projects:ro
+      - /projects/agent_out:/projects/agent_out:rw
+    ports:
+      - "2222:22"
+    shm_size: 2g
+
   # ── Hermes agent: LLM agent loop, SSH-backend execution targets agent-devbox ─
   hermes:
     image: nousresearch/hermes-agent:main
@@ -287,6 +308,7 @@ volumes:
   litellm_pgdata:
   mcpproxy_data:
   agent_devbox_home:
+  agent_sandbox_home:
   agent_browser_home:
   speaches_hf_cache:
 networks:

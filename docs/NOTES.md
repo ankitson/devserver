@@ -8,6 +8,22 @@ Production status, Garmin API quirks, auth/rate-limit notes, landing-zone
 contract, and pending work. Full detail:
 [`pipelines/docs/NOTES.md`](../pipelines/docs/NOTES.md).
 
+## 2026-06-10 - agent-sandbox for the remote agent
+- **Why**: mcpproxy's code-mode sandbox (goja VM) has no filesystem by design, so a remote
+  agent can't persist large outputs through `/mcp/code`. An SSH-able devbox with a real FS is
+  the cleaner pattern: run commands remotely, redirect big output to files, read back slices.
+- **Division of labor**: mcpproxy stays the gateway for OAuth'd tool access (Fastmail/Exa/
+  websets); `agent-sandbox` is the compute + artifact workspace. Artifacts land on the host at
+  `/projects/agent_out/`.
+- **Auth**: the seeded `authorized_keys` currently holds only the shared dev key. Prefer giving
+  the remote agent its own keypair: `just agent-sandbox-add-key "ssh-ed25519 AAAA... agent@host"`.
+  The baked-in private key was deleted from this container's home (inbound-only SSH).
+- **Audit caveat**: work done over SSH bypasses mcpproxy's UI/audit trail — blast radius is the
+  container plus `/projects/agent_out`, gated by the mounts.
+- **Gotcha**: `compose up` warns about orphan containers (pipeline-dagster, agentmemory, etc.)
+  in the `devserver` project — pre-existing, from services managed outside this compose file;
+  don't `--remove-orphans` blindly.
+
 ## 2026-06-09 - MCPProxy code-mode and full private route
 - **Code execution**: `enable_code_execution` is on in both the live MCPProxy config and
   `config/mcpproxy.seed.json`; `code_execution_timeout_ms` is 600000 (10 minutes).
