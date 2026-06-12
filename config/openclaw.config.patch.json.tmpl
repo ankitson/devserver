@@ -13,11 +13,13 @@
   "agents": {
     "list": [
       { "id": "main", "workspace": "/cybernetics/agents/main", "default": true },
-      { "id": "gilfoyle", "name": "gilfoyle", "workspace": "/cybernetics/agents/gilfoyle" }
+      { "id": "gilfoyle", "name": "gilfoyle", "workspace": "/cybernetics/agents/gilfoyle" },
+      { "id": "austin", "name": "austin", "workspace": "/cybernetics/agents/austin" }
     ]
   },
   "bindings": [
-    { "match": { "channel": "discord", "peer": { "kind": "channel", "id": "1513643336161034402" } }, "agentId": "gilfoyle" }
+    { "match": { "channel": "discord", "peer": { "kind": "channel", "id": "1513643336161034402" } }, "agentId": "gilfoyle" },
+    { "match": { "channel": "discord", "peer": { "kind": "channel", "id": "1514931682720088105" } }, "agentId": "austin" }
   ],
   "channels": {
     "discord": {
@@ -25,7 +27,8 @@
       "guilds": {
         "911234218556796938": {
           "channels": {
-            "1513643336161034402": { "requireMention": false }
+            "1513643336161034402": { "requireMention": false },
+            "1514931682720088105": { "requireMention": false }
           }
         }
       }
