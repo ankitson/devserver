@@ -142,8 +142,7 @@ services:
   # Reached via Caddy at https://agentsview.dev.ankitson.com (reverse_proxy agentsview:8080).
   # --public-url makes agentsview trust that host/origin (DNS-rebinding guard).
   agentsview:
-    #image: ghcr.io/kenn-io/agentsview:latest #TODO: swap to ghcr image when its working again
-    image: kenn-io/agentsview:latest
+    image: ankit/agentsview:abcbd2b
     container_name: agentsview
     restart: unless-stopped
     command: ["--host", "0.0.0.0", "--no-browser", "--public-url", "https://agentsview.dev.ankitson.com"]
