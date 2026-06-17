@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import subprocess
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from dagster import (
     AssetSelection,
@@ -156,6 +156,7 @@ _BIRDCLAW_EXEC = [
     # HOME points xurl at the directory-mounted token (/data/birdclaw/.xurl);
     # the old single-file .xurl bind mount went stale on token refresh.
     "-e", "HOME=/data/birdclaw",
+    "-e", "BIRDCLAW_BIRD_COMMAND=bird",
     "-w", "/apps/birdclaw",
     "app-runner",
     "node", "bin/birdclaw.mjs", "--json",
@@ -182,9 +183,14 @@ def _account_sync_op(account: str):
     # X rate limit.
     @op(name=f"birdclaw_sync_{account}", ins={"after": In(str, default_value="")})
     def _op(context, after) -> str:
+        thread_since = (
+            datetime.now(timezone.utc) - timedelta(days=7)
+        ).isoformat()
         return _run_birdclaw(context, [
             "jobs", "sync-account", "--account", account,
-            "--mode", "xurl", "--steps", "likes,bookmarks", "--max-pages", "50", "--refresh"
+            "--mode", "auto", "--steps", "likes,bookmarks", "--max-pages", "50",
+            "--refresh", "--saved-author-threads",
+            "--saved-author-threads-since", thread_since,
         ])
     return _op
 
@@ -195,7 +201,7 @@ birdclaw_sync_abiosno_op = _account_sync_op("acct_abiosno")
 
 @job
 def birdclaw_sync_bookmarks_job():
-    birdclaw_sync_primary_op(after=birdclaw_sync_abiosno_op())
+    birdclaw_sync_abiosno_op(after=birdclaw_sync_primary_op())
 
 
 @schedule(
