@@ -156,7 +156,7 @@ _BIRDCLAW_EXEC = [
     # HOME points xurl at the directory-mounted token (/data/birdclaw/.xurl);
     # the old single-file .xurl bind mount went stale on token refresh.
     "-e", "HOME=/data/birdclaw",
-    "-e", "BIRDCLAW_BIRD_COMMAND=bird",
+    "-e", "BIRDCLAW_BIRD_COMMAND=/home/ankit/.local/bin/bird",
     "-w", "/apps/birdclaw",
     "app-runner",
     "node", "bin/birdclaw.mjs", "--json",
@@ -191,6 +191,8 @@ def _account_sync_op(account: str):
             "--mode", "auto", "--steps", "likes,bookmarks", "--max-pages", "50",
             "--refresh", "--saved-author-threads",
             "--saved-author-threads-since", thread_since,
+            "--saved-author-threads-delay-ms", "5000",
+            "--saved-author-thread-page-delay-ms", "2000",
         ])
     return _op
 
@@ -201,7 +203,7 @@ birdclaw_sync_abiosno_op = _account_sync_op("acct_abiosno")
 
 @job
 def birdclaw_sync_bookmarks_job():
-    birdclaw_sync_abiosno_op(after=birdclaw_sync_primary_op())
+    birdclaw_sync_primary_op()
 
 
 @schedule(
