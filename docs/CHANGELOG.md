@@ -167,3 +167,9 @@ Recipes: `just oc-build` / `oc-up` / `oc-logs` / `ab-logs`. Caddy routes:
   `logs/dns-probe.jsonl`.
 - Added Just recipes for starting/stopping/tailing the probe, collecting host journal logs, and
   toggling `systemd-resolved` debug logging.
+
+### OpenClaw agent thinking defaults
+- Set `agents.defaults.thinkingDefault` to `high` in the OpenClaw startup patch and live state for
+  newly created agents.
+- Set `thinkingDefault: high` on the existing `main`, `gilfoyle`, and `austin` OpenClaw agent
+  entries.

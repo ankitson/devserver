@@ -322,3 +322,12 @@ contract, and pending work. Full detail:
 - **Repro flow**: run `just dns-debug-on`, `just dns-probe-clean`, `just dns-probe-up`, and in a
   second terminal `just dns-probe-host-logs`. After wake, inspect the two JSONL logs and turn debug
   back down with `just dns-debug-off`.
+
+## 2026-06-19 - OpenClaw high thinking defaults
+- **Goal**: make high thinking the default for newly created OpenClaw agents and for the configured
+  `main`, `gilfoyle`, and `austin` agents.
+- **Config shape**: OpenClaw uses `agents.defaults.thinkingDefault` for the inherited default and
+  `agents.list[].thinkingDefault` for per-agent overrides.
+- **Applied files**: updated the rendered startup patch, its template, and the live
+  `volumes/openclaw/openclaw.json` state so the setting is effective now and survives future
+  `just rs` renders.
