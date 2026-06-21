@@ -164,6 +164,19 @@ openrouter-byok-sync:
 openrouter-byok-list:
   python3 tools/openrouter_byok.py --list
 
+# List the MCP tools Bifrost discovered from mcpproxy (exa search + websets).
+bifrost-mcp-tools:
+  curl -fsS {{BIFROST_URL}}/api/mcp/clients | python3 -c 'import sys,json; [ (print("client",c["config"]["name"]+":"), [print("  -",t["name"]) for t in c.get("tools",[])]) for c in json.load(sys.stdin)["clients"]]'
+
+# Smoke test: drive a model through Bifrost that web-searches via mcpproxy->exa
+# (agent mode auto-executes the read-only exa search tools). Usage: just bifrost-test-search [model] [query...]
+bifrost-test-search model="nvidia/meta/llama-3.1-8b-instruct" *query="What is the maximhq Bifrost LLM gateway? Answer in one sentence.":
+  curl -fsS --max-time 120 {{BIFROST_URL}}/openai/v1/chat/completions \
+    -H 'Content-Type: application/json' \
+    -H 'x-bf-mcp-include-clients: mcpproxy' \
+    -d '{"model":"{{model}}","messages":[{"role":"user","content":"Use the web_search tool, then: {{query}}"}],"max_tokens":400}' \
+    | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d["choices"][0]["message"].get("content") if d.get("choices") else "ERR "+json.dumps(d.get("error",{})))'
+
 # Wipe Bifrost runtime state (config.db + logs.db). Forces a clean re-seed from
 # config/bifrost.config.json on next start. Does NOT touch the config file itself.
 bifrost-reset:

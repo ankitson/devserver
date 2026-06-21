@@ -44,6 +44,16 @@ Garmin / banking / Playnite / AoE4-replay / X-bookmarks pipelines on Dagster
   + `tools/openrouter_byok.py` + `just openrouter-byok-sync` are ready; or use the dashboard). **Web
   search**: Bifrost has none natively and can't run stdio MCPs (no node in image) → search comes via
   mcpproxy over HTTP (Phase 2); Brave key staged at `op://clankers/brave`.
+- **Phase 2 — MCP port (2026-06-20)**: Bifrost connects to **mcpproxy** as one HTTP MCP client
+  (`http://172.19.0.1:3130/mcp/all`) and inherits all federated tools — **26 discovered** (Exa web
+  search ×3 + websets ×23). Because Bifrost doesn't env-substitute MCP header values, `config.json` now
+  holds the mcpproxy bearer token and is rendered from `config/bifrost.config.json.tmpl` →
+  `secrets/bifrost.config.json` (compose mount moved to `secrets/`; run `just rs` before first boot).
+  Tools are deny-by-default (opt in per request with `x-bf-mcp-include-clients: mcpproxy`); only the
+  read-only Exa search tools are in `tools_to_auto_execute` (agent mode), so web search returns a
+  grounded answer in one call while destructive websets ops stay manual. **Verified end-to-end**:
+  `nvidia/meta/llama-3.1-8b-instruct` web-searched and answered. This also satisfies the search ask
+  (via Exa; Brave not needed). `just bifrost-mcp-tools` / `just bifrost-test-search`.
 - opencode wired to Bifrost: added a `bifrost` provider in `~/.config/opencode/opencode.jsonc`
   (openai-compatible, `http://127.0.0.1:8090/openai/v1`) with free OpenRouter + Claude model ids;
   verified `opencode run --model bifrost/openrouter/openai/gpt-oss-20b:free` end-to-end.

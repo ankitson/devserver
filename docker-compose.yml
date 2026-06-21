@@ -36,12 +36,15 @@ services:
   # ── Bifrost LLM Gateway ─────────────────────────────────────────
   # Go-based OpenAI/Anthropic-compatible gateway (maximhq/bifrost). Lives on
   # mybridge; other services reach it at http://bifrost:8080. Provider API keys
-  # come from secrets/bifrost.env (rendered by `just rs`); config/bifrost.config.json
-  # references them as `env.OPENROUTER_API_KEY` etc. and is mounted read-only over
-  # the app-dir so it stays the source of truth — Bifrost re-applies config.json on
-  # every boot (edit + `just restart bifrost` to pick up changes). The config_store +
-  # logs_store sqlite DBs under ./volumes/bifrost persist request logs and any Web-UI
-  # edits; `just bifrost-reset` wipes them for a clean slate.
+  # come from secrets/bifrost.env; config.json is rendered from
+  # config/bifrost.config.json.tmpl to secrets/bifrost.config.json by `just rs`
+  # (it carries the mcpproxy bearer token, so it can't stay checked in). Provider
+  # keys inside it are still `env.OPENROUTER_API_KEY` refs resolved from the env
+  # file. Bifrost re-applies config.json on every boot; edit the .tmpl, `just rs`,
+  # then `just restart bifrost` (or `just up bifrost` if env vars changed — restart
+  # does NOT reload env_file). The config_store + logs_store sqlite DBs under
+  # ./volumes/bifrost persist request logs and Web-UI edits; `just bifrost-reset`
+  # wipes them for a clean slate.
   # Integration endpoints: /openai/v1 (OpenAI-compatible), /anthropic (Claude Code),
   # /genai (Gemini). Web UI + request logs at http://127.0.0.1:8090.
   bifrost:
@@ -53,7 +56,7 @@ services:
       - ./secrets/bifrost.env
     volumes:
       - ./volumes/bifrost:/app/data                       # runtime config.db + logs.db (gitignored)
-      - ./config/bifrost.config.json:/app/data/config.json:ro
+      - ./secrets/bifrost.config.json:/app/data/config.json:ro   # rendered from config/bifrost.config.json.tmpl by `just rs` (holds the mcpproxy bearer token)
     ports:
       - "127.0.0.1:${BIFROST_PORT:-8090}:8080"   # local debug + Web UI; LAN/TLS via Caddy
 

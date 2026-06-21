@@ -22,6 +22,28 @@
     }
   },
 
+  "mcp": {
+    "client_configs": [
+      {
+        "name": "mcpproxy",
+        "connection_type": "http",
+        "connection_string": "http://172.19.0.1:3130/mcp/all",
+        "is_ping_available": false,
+        "auth_type": "headers",
+        "headers": {
+          "Authorization": "Bearer {{ op://clankers/mcpproxy-agents/password }}"
+        },
+        "tools_to_execute": ["*"],
+        "tools_to_auto_execute": [
+          "exa__web_search_exa",
+          "exa__web_search_advanced_exa",
+          "exa__web_fetch_exa"
+        ],
+        "allow_on_all_virtual_keys": true
+      }
+    ]
+  },
+
   "providers": {
     "openrouter": {
       "keys": [

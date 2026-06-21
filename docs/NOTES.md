@@ -104,11 +104,35 @@ contract, and pending work. Full detail:
     `speaches/deepdml/faster-whisper-large-v3-turbo-ct2` transcribed the JFK clip correctly.
 - **Web search**: Bifrost has **no native web search** — search is only available as an **MCP tool**.
   And the `maximhq/bifrost` image has **no node/npx/python**, so it **cannot run stdio MCP servers** —
-  only HTTP MCP. Brave's MCP is stdio, so it can't live inside Bifrost. Architecture decision: expose
-  search (and all MCPs) by pointing Bifrost at **mcpproxy** over HTTP (mcpproxy already federates Exa
-  web search and can host Brave). The Brave key is `op://clankers/brave` (password field) — to be wired
-  into mcpproxy in **Phase 2**, not Bifrost env. ("codex search" in the request is ambiguous — see the
-  session summary; Codex's own web_search is an OpenAI Responses-API hosted tool, separate from this.)
+  only HTTP MCP. Solved in Phase 2 by pointing Bifrost at **mcpproxy** over HTTP, which already
+  federates **Exa web search** — so search now works through Bifrost (see Phase 2). Brave was therefore
+  not needed; the key is staged at `op://clankers/brave` if you want it as an additional engine (add it
+  to mcpproxy, not Bifrost). ("codex search" in the original ask is ambiguous — Codex's own web_search
+  is an OpenAI Responses-API hosted tool, separate from this; Bifrost gets search via the Exa MCP tool.)
+
+### Phase 2 (2026-06-20): MCP port — Bifrost ↔ mcpproxy
+- **Approach**: rather than re-declaring every upstream, Bifrost connects to **mcpproxy** as a single
+  **HTTP MCP client** (`mcp.client_configs[]`, `connection_string: http://172.19.0.1:3130/mcp/all`,
+  the host-gateway address of the host-networked mcpproxy). mcpproxy already federates exa/fastmail/
+  websets, so Bifrost inherits all of them. Verified: Bifrost discovered **26 tools** (exa ×3 +
+  websets ×23; fastmail's OAuth tools aren't in the downstream agent-token's federated set).
+- **Token can't be an env ref in MCP headers** — Bifrost only env-substitutes `connection_string`, NOT
+  header values (tested: `Bearer env.X` → 401 from mcpproxy). So `config.json` now carries the
+  mcpproxy bearer token and is **rendered from `config/bifrost.config.json.tmpl` → `secrets/bifrost.config.json`**
+  by `just rs` (op inject), exactly like `openclaw.config.patch.json.tmpl`. The compose mount changed
+  from `./config/bifrost.config.json` to `./secrets/bifrost.config.json`. **A fresh setup must run
+  `just rs` (or `op inject` the two bifrost templates) before `just up bifrost`.**
+- **Tools are deny-by-default**: a request opts in per-call with header `x-bf-mcp-include-clients: mcpproxy`
+  (or `x-bf-mcp-include-tools: <client>-<tool>`). Nothing is exposed to a model unless it asks.
+- **Agent mode**: `tools_to_auto_execute` is set to the **read-only Exa search tools only**
+  (`exa__web_search_exa`, `_advanced_exa`, `web_fetch_exa`) so Bifrost auto-runs them in a loop and
+  returns a grounded answer in one call. The 23 websets tools remain available (`tools_to_execute:["*"]`)
+  but require client approval via `/v1/mcp/tool/execute` — destructive ops (create/delete webset) never
+  auto-run. **Verified end-to-end**: `nvidia/meta/llama-3.1-8b-instruct` + `x-bf-mcp-include-clients: mcpproxy`
+  searched the web and answered correctly.
+- **Security note**: Bifrost has no downstream auth yet (local/`mybridge` only), so any caller that sends
+  the include header can reach these tools. Fine for now; add Bifrost virtual keys / a Caddy auth layer
+  before exposing it off-box.
 
 ## 2026-06-10 - agent-sandbox for the remote agent
 - **Why**: mcpproxy's code-mode sandbox (goja VM) has no filesystem by design, so a remote
