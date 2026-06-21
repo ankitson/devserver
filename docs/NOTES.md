@@ -340,3 +340,9 @@ contract, and pending work. Full detail:
 - **Applied files**: updated the rendered startup patch, its template, and the live
   `volumes/openclaw/openclaw.json` state so the setting is effective now and survives future
   `just rs` renders.
+
+## 2026-06-20 - SillyTavern Chat Completion preset copy
+- **Finding**: Chat Completion preset JSON files can be installed directly by copying them into
+  `volumes/sillytavern/data/default-user/OpenAI Settings/`.
+- **Helper**: added `just sillytavern-preset-copy path/to/preset.json` as a thin wrapper around that
+  direct copy. Actual preset exports are user data and should not be tracked in this repo.

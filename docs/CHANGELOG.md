@@ -180,3 +180,9 @@ Recipes: `just oc-build` / `oc-up` / `oc-logs` / `ab-logs`. Caddy routes:
   newly created agents.
 - Set `thinkingDefault: high` on the existing `main`, `gilfoyle`, and `austin` OpenClaw agent
   entries.
+
+## 2026-06-20
+
+### SillyTavern Chat Completion presets
+- Added a `just sillytavern-preset-copy` recipe to copy local Chat Completion preset JSON files into
+  SillyTavern's `OpenAI Settings` user-volume directory.
