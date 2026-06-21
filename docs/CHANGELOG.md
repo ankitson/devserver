@@ -157,3 +157,13 @@ Recipes: `just oc-build` / `oc-up` / `oc-logs` / `ab-logs`. Caddy routes:
 - Added Just recipes for starting, logging, and smoke-testing OpenClaw web apps.
 - Documented the deployment contract and follow-up workspace decisions in
   `docs/2026-06-04-openclaw-webapps/`.
+
+## 2026-06-19
+
+### DNS Probe
+- Added `tools/dns_probe`, a static Go DNS/HTTP probe built on Alpine to mirror MCPProxy's resolver
+  environment.
+- Added a host-networked `dns-probe` Compose service that writes JSONL diagnostics to
+  `logs/dns-probe.jsonl`.
+- Added Just recipes for starting/stopping/tailing the probe, collecting host journal logs, and
+  toggling `systemd-resolved` debug logging.

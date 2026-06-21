@@ -116,6 +116,28 @@ services:
       timeout: 5s
       retries: 5
 
+  # ── DNS probe: reproduces post-wake Go resolver behavior in a host-networked container ─
+  # Mirrors MCPProxy's static Go + Alpine + host-network DNS path. Logs Go resolver
+  # lookups, direct DNS-server lookups, and Fastmail OAuth metadata GETs as JSONL.
+  dns-probe:
+    build:
+      context: ./tools/dns_probe
+    image: ankit/dns-probe:local
+    container_name: dns-probe
+    hostname: dns-probe
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      - DNS_PROBE_INTERVAL=${DNS_PROBE_INTERVAL:-5}
+      - DNS_PROBE_TIMEOUT=${DNS_PROBE_TIMEOUT:-2}
+      - DNS_PROBE_NAMES=${DNS_PROBE_NAMES:-api.fastmail.com,api.fastmail.com.,desktop-linux.myth-dab.ts.net,desktop-linux.myth-dab.ts.net.}
+      - DNS_PROBE_SERVERS=${DNS_PROBE_SERVERS:-resolv-conf,127.0.0.53,100.100.100.100,10.2.2.3}
+      - DNS_PROBE_HTTP_URLS=${DNS_PROBE_HTTP_URLS:-https://api.fastmail.com/.well-known/oauth-authorization-server}
+      - DNS_PROBE_LOG=/logs/dns-probe.jsonl
+      - GODEBUG=${DNS_PROBE_GODEBUG:-netdns=go+1}
+    volumes:
+      - ./logs:/logs
+
   # ── Agent sandbox: devbox-image container that Hermes drives over SSH ──────
   agent-devbox:
     image: ankit/devbox:1.4

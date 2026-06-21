@@ -309,3 +309,16 @@ contract, and pending work. Full detail:
   returns its own 404.
 - **Follow-ups**: see `docs/2026-06-04-openclaw-webapps/ADR.md` for workspace/AGENTS consolidation
   decisions to evaluate after the runner is live.
+
+## 2026-06-19 - DNS probe for MCPProxy post-wake failures
+- **Goal**: reproduce and timestamp the DNS failure pattern that caused Fastmail OAuth refreshes to
+  fail after sleep, without changing MCPProxy DNS behavior.
+- **Probe design**: `dns-probe` is a static Go binary in an Alpine container with `network_mode:
+  host`, matching MCPProxy's static Go + Alpine + host-network setup. It logs Go
+  `net.DefaultResolver` lookups, direct `net.Resolver` lookups to configured DNS servers, and an
+  HTTP GET to Fastmail's OAuth metadata endpoint.
+- **Log files**: container probe output goes to `logs/dns-probe.jsonl`; host journal correlation
+  goes to `logs/dns-probe-host.jsonl` when `just dns-probe-host-logs` is running.
+- **Repro flow**: run `just dns-debug-on`, `just dns-probe-clean`, `just dns-probe-up`, and in a
+  second terminal `just dns-probe-host-logs`. After wake, inspect the two JSONL logs and turn debug
+  back down with `just dns-debug-off`.

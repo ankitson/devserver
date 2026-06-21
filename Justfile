@@ -197,6 +197,38 @@ mcpproxy-health:
   curl -fsS http://172.19.0.1:3130/healthz
   @echo
 
+# ── DNS probe: host-networked Go resolver diagnostics ───────────────
+dns-probe-up:
+  {{COMPOSE}} -p devserver up -d --build --no-deps dns-probe
+
+dns-probe-stop:
+  {{COMPOSE}} -p devserver stop dns-probe
+
+dns-probe-logs:
+  {{COMPOSE}} -p devserver logs -f dns-probe
+
+dns-probe-tail:
+  tail -f logs/dns-probe.jsonl
+
+dns-probe-host-tail:
+  tail -f logs/dns-probe-host.jsonl
+
+dns-probe-host-logs since="now":
+  journalctl --follow --output=json --since "{{since}}" --no-pager \
+    -u systemd-resolved -u tailscaled -u docker -u NetworkManager \
+    | tee -a logs/dns-probe-host.jsonl
+
+dns-probe-clean:
+  rm -f logs/dns-probe.jsonl logs/dns-probe-host.jsonl
+
+# Enable this before a sleep/wake repro. It is intentionally separate because
+# resolved debug logging is noisy and should be turned back down after capture.
+dns-debug-on:
+  sudo resolvectl log-level debug
+
+dns-debug-off:
+  sudo resolvectl log-level info
+
 # Run this on the devserver host: Fastmail redirects the browser to a
 # 127.0.0.1 callback listener owned by the host-networked container.
 mcpproxy-auth-fastmail:
