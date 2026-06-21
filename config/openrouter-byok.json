@@ -1,0 +1,8 @@
+{
+  "_comment": "Declarative OpenRouter BYOK (bring-your-own-key) provider credentials. Sync with `just openrouter-byok-sync` (tools/openrouter_byok.py). BYOK lets OpenRouter route a model to a provider's first-party endpoint using YOUR key + credits (OpenRouter takes a ~5% fee). Once a credential exists, OpenRouter auto-prioritizes it for that provider — no per-request pinning required (pin with provider.only:[<slug>] to force it). NOTE: the BYOK API (`POST /api/v1/byok`) requires an OpenRouter MANAGEMENT/provisioning key, NOT a normal sk-or- key. Set management_key_op (or env OPENROUTER_MGMT_KEY). Provider keys are read from 1Password at sync time; nothing secret is stored here. Alternative: add these in the dashboard at https://openrouter.ai/settings/integrations .",
+  "management_key_op": "op://clankers/openrouter-mgmt/password",
+  "credentials": [
+    { "provider": "deepseek", "name": "deepseek-byok", "key_op": "op://clankers/deepseek/password" },
+    { "provider": "mistral",  "name": "mistral-byok",  "key_op": "op://clankers/mistral-free/password" }
+  ]
+}

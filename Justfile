@@ -117,6 +117,61 @@ speaches-test file:
     -F "model=deepdml/faster-whisper-large-v3-turbo-ct2" \
     -F "response_format=json" | python3 -m json.tool
 
+# ── Bifrost LLM gateway ─────────────────────────────────────────────
+BIFROST_URL := "http://127.0.0.1:8090"
+
+# List the providers Bifrost loaded from config/bifrost.config.json.
+bifrost-providers:
+  curl -fsS {{BIFROST_URL}}/api/providers | python3 -c 'import sys,json; [print("-", p["name"], "("+p.get("provider_status","?")+")") for p in json.load(sys.stdin)["providers"]]'
+
+# Smoke test: call a free OpenRouter model end-to-end through Bifrost.
+# Usage: just bifrost-test [model]   (model is the bifrost id, default a free one)
+bifrost-test model="openrouter/openai/gpt-oss-20b:free":
+  curl -fsS --max-time 120 {{BIFROST_URL}}/openai/v1/chat/completions \
+    -H 'Content-Type: application/json' \
+    -d '{"model":"{{model}}","messages":[{"role":"user","content":"Reply with exactly: BIFROST_OK"}],"max_tokens":20}' \
+    | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d["choices"][0]["message"]["content"].strip() if d.get("choices") else "ERR "+str(d.get("status_code"))+" "+json.dumps(d.get("error",{})))'
+
+# Smoke test the extra_params passthrough: pin an OpenRouter model to a specific
+# upstream provider through Bifrost (the `provider` object is merged upstream only
+# when `x-bf-passthrough-extra-params: true` is set). Default pins deepseek-v4-flash
+# to the ZDR `wafer` BYOK endpoint. Usage: just bifrost-test-pin [model] [provider]
+bifrost-test-pin model="openrouter/deepseek/deepseek-v4-flash" provider="wafer":
+  curl -fsS --max-time 120 {{BIFROST_URL}}/openai/v1/chat/completions \
+    -H 'Content-Type: application/json' \
+    -H 'x-bf-passthrough-extra-params: true' \
+    -d '{"model":"{{model}}","messages":[{"role":"user","content":"Reply with exactly: PIN_OK"}],"max_tokens":16,"extra_params":{"provider":{"only":["{{provider}}"],"allow_fallbacks":false}}}' \
+    | python3 -c 'import sys,json; d=json.load(sys.stdin); print((d["choices"][0]["message"]["content"].strip()+" | resolved="+str(d.get("model"))) if d.get("choices") else "ERR "+str(d.get("status_code"))+" "+json.dumps(d.get("error",{})))'
+
+# Sync declarative OpenRouter presets (config/openrouter-presets.json) to the
+# OpenRouter account. Presets bake provider routing server-side, so they survive
+# Bifrost (which strips the request-body `provider` field) — this is how we pin
+# deepseek-v4-flash onto the ZDR `wafer` BYOK endpoint through the gateway.
+# Reference a preset as model `openrouter/@preset/<slug>`. No inference cost.
+openrouter-presets-sync:
+  python3 tools/openrouter_presets.py
+
+openrouter-presets-check:
+  python3 tools/openrouter_presets.py --check
+
+# Register OpenRouter BYOK provider credentials (config/openrouter-byok.json) so
+# models route to a provider's first-party endpoint on YOUR key/credits. Needs an
+# OpenRouter management key (OPENROUTER_MGMT_KEY or management_key_op in the json),
+# not a normal sk-or- key. Provider keys read from 1Password at sync time.
+openrouter-byok-sync:
+  python3 tools/openrouter_byok.py
+
+openrouter-byok-list:
+  python3 tools/openrouter_byok.py --list
+
+# Wipe Bifrost runtime state (config.db + logs.db). Forces a clean re-seed from
+# config/bifrost.config.json on next start. Does NOT touch the config file itself.
+bifrost-reset:
+  {{COMPOSE}} stop bifrost
+  rm -rf ./volumes/bifrost/*.db ./volumes/bifrost/*.db-*
+  {{COMPOSE}} up -d bifrost
+  @echo "bifrost reset — re-seeded from config/bifrost.config.json"
+
 # ── MCPProxy shared MCP gateway ─────────────────────────────────────
 # Keep the Compose project name stable when running from an isolated worktree.
 mcpproxy-up:

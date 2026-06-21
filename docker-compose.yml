@@ -33,6 +33,30 @@ services:
       timeout: 5s
       retries: 5
 
+  # ── Bifrost LLM Gateway ─────────────────────────────────────────
+  # Go-based OpenAI/Anthropic-compatible gateway (maximhq/bifrost). Lives on
+  # mybridge; other services reach it at http://bifrost:8080. Provider API keys
+  # come from secrets/bifrost.env (rendered by `just rs`); config/bifrost.config.json
+  # references them as `env.OPENROUTER_API_KEY` etc. and is mounted read-only over
+  # the app-dir so it stays the source of truth — Bifrost re-applies config.json on
+  # every boot (edit + `just restart bifrost` to pick up changes). The config_store +
+  # logs_store sqlite DBs under ./volumes/bifrost persist request logs and any Web-UI
+  # edits; `just bifrost-reset` wipes them for a clean slate.
+  # Integration endpoints: /openai/v1 (OpenAI-compatible), /anthropic (Claude Code),
+  # /genai (Gemini). Web UI + request logs at http://127.0.0.1:8090.
+  bifrost:
+    image: maximhq/bifrost:latest
+    container_name: bifrost
+    hostname: bifrost
+    restart: unless-stopped
+    env_file:
+      - ./secrets/bifrost.env
+    volumes:
+      - ./volumes/bifrost:/app/data                       # runtime config.db + logs.db (gitignored)
+      - ./config/bifrost.config.json:/app/data/config.json:ro
+    ports:
+      - "127.0.0.1:${BIFROST_PORT:-8090}:8080"   # local debug + Web UI; LAN/TLS via Caddy
+
   # ── MCPProxy: shared MCP gateway with upstream OAuth and scoped agent tokens ─
   # Host networking is required for OAuth providers that redirect to MCPProxy's
   # loopback callback listener. The HTTP API still binds only to mybridge's host

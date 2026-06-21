@@ -8,6 +8,47 @@ Garmin / banking / Playnite / AoE4-replay / X-bookmarks pipelines on Dagster
 (+ DBOS / Restate experiments). Full detail:
 [`pipelines/docs/CHANGELOG.md`](../pipelines/docs/CHANGELOG.md).
 
+## Bifrost LLM gateway (2026-06-20)
+- Added the `bifrost` compose service (`maximhq/bifrost:latest`) — a Go OpenAI/Anthropic-compatible
+  LLM gateway alongside the existing LiteLLM one. On `mybridge`; other services reach it at
+  `http://bifrost:8080`. Web UI + request logs on `http://127.0.0.1:8090` (`BIFROST_PORT`).
+- Config is declarative: `config/bifrost.config.json` (checked in, no secrets — keys referenced as
+  `env.OPENROUTER_API_KEY` etc.) mounted read-only over the app-dir. Bifrost re-applies it on every
+  boot. Runtime sqlite (`config.db`, `logs.db`) lives in the bind-mounted `./volumes/bifrost`
+  (gitignored). Provider keys come from `secrets/bifrost.env` (template `config/bifrost.env.tmpl`,
+  rendered by `just rs` — keys: openrouter, anthropic-key1, openai).
+- Providers: `openrouter` (tested end-to-end with free models, e.g. `openrouter/openai/gpt-oss-20b:free`),
+  `anthropic` and `openai` (API-key paths wired; the anthropic key currently has no credit balance).
+- **Claude/Codex subscriptions are NOT usable through Bifrost** — it proxies API keys only. Claude
+  Code/Codex CLI both prefer their own OAuth and must be logged out to use a gateway; there is no
+  subscription pass-through. The anthropic/openai providers here are API-key billed.
+- **Zero Data Retention / provider pinning through Bifrost** — three ways (OpenRouter has no ZDR
+  *header*; routing is a request-body `provider` object, which Bifrost strips by default):
+  1. **`extra_params` + `x-bf-passthrough-extra-params: true`** — nest `{"provider":{...}}` under
+     `extra_params` and Bifrost merges it into the upstream request. Per-request, best for raw API.
+     Verified: the header flips `provider.only:["nonexistent"]` from a completion to a 404.
+  2. **OpenRouter Presets** — routing stored server-side, referenced by model string `@preset/<slug>`
+     (passes through Bifrost untouched; best for model-string-only clients like opencode).
+     `config/openrouter-presets.json` + `just openrouter-presets-sync` (tools/openrouter_presets.py)
+     define `zdr-deepseek-wafer` (pins `deepseek/deepseek-v4-flash` → ZDR `wafer` BYOK endpoint,
+     `allow_fallbacks:false`). Verified e2e through Bifrost + opencode: served by Wafer, `is_byok:true`.
+  3. **Account-level** privacy default at <https://openrouter.ai/settings/privacy> (global, blanket).
+  See `docs/NOTES.md` for the full writeup, conceptual ZDR notes, and curl examples.
+- **Phase 1 providers (2026-06-20)**: added **NVIDIA NIM** as custom provider `nvidia`
+  (`integrate.api.nvidia.com`, `op://clankers/nvidia-build`; verified `nvidia/meta/llama-3.1-8b-instruct`)
+  and **speaches** as custom STT provider (local Whisper at `http://speaches:8000`,
+  `allow_private_network:true`; verified `/v1/audio/transcriptions` on the JFK clip). Custom-provider
+  gotchas captured in NOTES (base_url without `/v1`; explicit model lists — no `*`; env changes need
+  `just up` not `restart`). **DeepSeek + Mistral** route via OpenRouter (BYOK) — path verified through
+  Bifrost; registering the BYOK keys is blocked on an OpenRouter management key (`config/openrouter-byok.json`
+  + `tools/openrouter_byok.py` + `just openrouter-byok-sync` are ready; or use the dashboard). **Web
+  search**: Bifrost has none natively and can't run stdio MCPs (no node in image) → search comes via
+  mcpproxy over HTTP (Phase 2); Brave key staged at `op://clankers/brave`.
+- opencode wired to Bifrost: added a `bifrost` provider in `~/.config/opencode/opencode.jsonc`
+  (openai-compatible, `http://127.0.0.1:8090/openai/v1`) with free OpenRouter + Claude model ids;
+  verified `opencode run --model bifrost/openrouter/openai/gpt-oss-20b:free` end-to-end.
+- New recipes: `just bifrost-providers`, `just bifrost-test [model]`, `just bifrost-reset`.
+
 ## agent-sandbox: SSH workspace for the remote agent (2026-06-10)
 - Added the `agent-sandbox` compose service: a second `ankit/devbox:1.4` container, driven over
   SSH from another machine instead of by Hermes. Purpose: give the remote agent a real

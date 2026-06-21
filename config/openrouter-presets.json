@@ -1,0 +1,15 @@
+{
+  "_comment": "Declarative OpenRouter presets. Sync to the OpenRouter account with `just openrouter-presets-sync` (tools/openrouter_presets.py). Presets bake provider routing SERVER-SIDE on OpenRouter, so they survive gateways like Bifrost that strip the request-body `provider` field. Reference a preset as model `@preset/<slug>` (or `openrouter/@preset/<slug>` through Bifrost). BYOK provider keys (e.g. wafer) are an account-level Integrations setting, not part of the preset.",
+  "presets": [
+    {
+      "slug": "zdr-deepseek-wafer",
+      "config": {
+        "model": "deepseek/deepseek-v4-flash",
+        "provider": {
+          "only": ["wafer"],
+          "allow_fallbacks": false
+        }
+      }
+    }
+  ]
+}
