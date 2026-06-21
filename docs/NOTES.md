@@ -134,6 +134,34 @@ contract, and pending work. Full detail:
   the include header can reach these tools. Fine for now; add Bifrost virtual keys / a Caddy auth layer
   before exposing it off-box.
 
+### Follow-ups (2026-06-20): Caddy, DeepSeek-direct, fastmail
+- **Caddy**: Web UI + API now at **https://bifrost.dev.ankitson.com** (private_only / LAN+Tailscale).
+  Route added to `homeserver:volumes/caddy/dev.Caddyfile` (`reverse_proxy bifrost:8080`; Caddy is on
+  mybridge so it resolves the container by name) and reloaded live. **That edit is in the homeserver
+  repo and is currently uncommitted there.**
+- **DeepSeek can't be BYOK'd through OpenRouter** — OpenRouter has **no DeepSeek-direct endpoint** for
+  any deepseek slug (`only:["deepseek"]` 404s with `available_providers: [streamlake, deepinfra, novita]`;
+  all the deepseek models on OR are served by third parties). Mistral BYOK *does* work (verified direct:
+  `provider: Mistral, is_byok: true`). So DeepSeek was added as a **direct Bifrost provider** instead
+  (`deepseek` custom openai-compatible, `https://api.deepseek.com`, key `op://clankers/deepseek`, models
+  `deepseek-chat`/`deepseek-reasoner`). Wired & authenticating — currently returns **402 Insufficient
+  Balance** (that DeepSeek account needs funding), not a config problem.
+- **`is_byok` is invisible through Bifrost** — Bifrost normalizes the usage object and drops OpenRouter's
+  `is_byok`/`cost` fields. To confirm BYOK, call OpenRouter directly. Routing still works through Bifrost
+  (e.g. mistral `extra_params.provider.only:["mistral"]` hits the BYOK Mistral endpoint).
+- **fastmail is configured in mcpproxy but does NOT reach Bifrost.** mcpproxy shows fastmail connected,
+  OAuth healthy, 18 tools — but its `/mcp/all` downstream route (what Bifrost connects to) federates only
+  the **stdio, non-OAuth** servers (exa + websets = 26 tools); the OAuth fastmail upstream is not exposed
+  to downstream bearer tokens. So fastmail tools are absent from Bifrost's 26.
+- **Do you have to use mcpproxy? Depends on transport:**
+  - **stdio MCPs** (exa, websets, brave): the bifrost image has no node/npx/python, so it **can't run
+    them** — they need mcpproxy (or a node-equipped sidecar) and reach Bifrost over HTTP. mcpproxy is the
+    convenient single aggregation point for these.
+  - **HTTP MCPs** (fastmail): Bifrost can host these **directly** (`connection_type:"http"` with
+    `auth_type` `oauth`/`per_user_oauth`/`headers`) — no mcpproxy needed. Getting fastmail into Bifrost
+    means adding it as a direct HTTP+OAuth client, which requires completing Fastmail's interactive OAuth
+    flow against Bifrost (not done yet — mcpproxy currently owns that OAuth session).
+
 ## 2026-06-10 - agent-sandbox for the remote agent
 - **Why**: mcpproxy's code-mode sandbox (goja VM) has no filesystem by design, so a remote
   agent can't persist large outputs through `/mcp/code`. An SSH-able devbox with a real FS is

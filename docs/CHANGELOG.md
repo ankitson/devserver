@@ -54,6 +54,12 @@ Garmin / banking / Playnite / AoE4-replay / X-bookmarks pipelines on Dagster
   grounded answer in one call while destructive websets ops stay manual. **Verified end-to-end**:
   `nvidia/meta/llama-3.1-8b-instruct` web-searched and answered. This also satisfies the search ask
   (via Exa; Brave not needed). `just bifrost-mcp-tools` / `just bifrost-test-search`.
+- **Follow-ups (2026-06-20)**: Web UI/API exposed at **https://bifrost.dev.ankitson.com** (private_only;
+  route in homeserver `dev.Caddyfile`). **Mistral BYOK** confirmed working via OpenRouter; **DeepSeek
+  can't BYOK on OpenRouter** (no DeepSeek-direct endpoint) so added a **direct `deepseek` provider**
+  (`api.deepseek.com`, wired & authenticating — that account needs funding). **fastmail** is healthy in
+  mcpproxy (18 tools) but its OAuth upstream isn't federated through `/mcp/all`, so it doesn't reach
+  Bifrost; to use it, add fastmail directly to Bifrost as an HTTP+OAuth MCP client. See NOTES.
 - opencode wired to Bifrost: added a `bifrost` provider in `~/.config/opencode/opencode.jsonc`
   (openai-compatible, `http://127.0.0.1:8090/openai/v1`) with free OpenRouter + Claude model ids;
   verified `opencode run --model bifrost/openrouter/openai/gpt-oss-20b:free` end-to-end.
