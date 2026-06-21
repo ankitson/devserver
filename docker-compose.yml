@@ -279,8 +279,8 @@ services:
       # The socket = host root; gilfoyle's workspace policy gates every write on an
       # explicit Discord approval (see /cybernetics/agents/gilfoyle/AGENTS.md).
       - /var/run/docker.sock:/var/run/docker.sock
-      - /home/ankit/hroot/homeserver:/hroot/homeserver:rw
-      - /home/ankit/hroot/devserver:/hroot/devserver:rw
+      - /home/ankit/hroot/homeserver:/home/ankit/hroot/homeserver:rw
+      - /home/ankit/hroot/devserver:/home/ankit/hroot/devserver:rw
     # Host `docker` group (gid 998) so the `ankit` user inside can reach the socket.
     group_add:
       - "998"
