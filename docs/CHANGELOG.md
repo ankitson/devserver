@@ -168,6 +168,13 @@ Recipes: `just oc-build` / `oc-up` / `oc-logs` / `ab-logs`. Caddy routes:
 - Added Just recipes for starting/stopping/tailing the probe, collecting host journal logs, and
   toggling `systemd-resolved` debug logging.
 
+### MCPProxy image
+- Updated the `mcpproxy` Compose build args and image tag from v0.35.0 to v0.43.0 using the
+  upstream linux-amd64 release checksum.
+- Rebuilt and recreated only the `mcpproxy` service, preserving the existing `mcpproxy_data` volume.
+- Retested `retrieve_tools` for the Fastmail calendar update query; v0.43.0 still filters
+  `fastmail:update_event` when `exclude_destructive=true`.
+
 ### OpenClaw agent thinking defaults
 - Set `agents.defaults.thinkingDefault` to `high` in the OpenClaw startup patch and live state for
   newly created agents.

@@ -323,6 +323,15 @@ contract, and pending work. Full detail:
   second terminal `just dns-probe-host-logs`. After wake, inspect the two JSONL logs and turn debug
   back down with `just dns-debug-off`.
 
+## 2026-06-19 - MCPProxy v0.43.0 search-filter check
+- **Goal**: update the shared MCPProxy gateway from v0.35.0 to v0.43.0 and retest whether
+  `retrieve_tools` returns `fastmail:update_event` for a write-intent calendar query.
+- **Image update**: rebuilt `ankit/mcpproxy:0.43.0` from the upstream v0.43.0 linux-amd64 release
+  tarball using the published checksum, then recreated only the `mcpproxy` service.
+- **Result**: the admin search endpoint ranks `fastmail:update_event` second for the query, but
+  MCP `retrieve_tools` still omits it when `exclude_destructive=true` because the tool lacks an
+  explicit `destructiveHint:false` annotation.
+
 ## 2026-06-19 - OpenClaw high thinking defaults
 - **Goal**: make high thinking the default for newly created OpenClaw agents and for the configured
   `main`, `gilfoyle`, and `austin` agents.

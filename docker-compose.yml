@@ -95,9 +95,9 @@ services:
       context: /projects/dockers/mcpproxy
       dockerfile: Dockerfile
       args:
-        MCPPROXY_VERSION: "0.35.0"
-        MCPPROXY_SHA256: "5fd8592469117fb4656a8b4d335bdf651219f210d4911a5849b6dcc510b2f97c"
-    image: ankit/mcpproxy:0.35.0
+        MCPPROXY_VERSION: "0.43.0"
+        MCPPROXY_SHA256: "ce1c8ab598e5c92b8af3eeaa6c640be994d8839c6bdf9a7eceacd2250300635d"
+    image: ankit/mcpproxy:0.43.0
     container_name: mcpproxy
     hostname: mcpproxy
     restart: unless-stopped
