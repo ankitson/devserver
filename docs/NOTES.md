@@ -134,6 +134,23 @@ contract, and pending work. Full detail:
   the include header can reach these tools. Fine for now; add Bifrost virtual keys / a Caddy auth layer
   before exposing it off-box.
 
+### SillyTavern (2026-06-20)
+- `sillytavern` compose service (`ghcr.io/sillytavern/sillytavern:latest`, port 8000) on mybridge,
+  state under `./volumes/sillytavern/{config,data,plugins,extensions}` (gitignored). Local debug at
+  `127.0.0.1:8001`; LAN/TLS at **https://sillytavern.dev.ankitson.com** (private_only Caddy route in
+  homeserver `dev.Caddyfile`).
+- **Reverse-proxy posture** set declaratively via compose env (`SILLYTAVERN_LISTEN=true`,
+  `WHITELISTMODE=false`, `SECURITYOVERRIDE=true`) so it works on a fresh volume — `config.yaml` itself
+  is in the gitignored volume. ST has no auth of its own; Caddy private_only is the gate.
+- **Pointed at Bifrost**: pre-seeded `data/default-user/settings.json` →
+  `oai_settings.chat_completion_source=custom`, `custom_url=http://bifrost:8080/openai/v1`,
+  `custom_model=nvidia/meta/llama-3.1-8b-instruct` (+ placeholder `api_key_custom` in secrets.json;
+  Bifrost is keyless). ST proxies the API call server-side, so the internal `bifrost:8080` hostname
+  resolves. **Verified end-to-end**: ST → Bifrost `/openai/v1/chat/completions` returns completions.
+- To change models in the UI: API Connections → Chat Completion → Custom (OpenAI-compatible); the model
+  dropdown is populated live from Bifrost's `/openai/v1/models` (any provider/model id works, e.g.
+  `openrouter/...`, `nvidia/...`, `deepseek/deepseek-chat`).
+
 ### Follow-ups (2026-06-20): Caddy, DeepSeek-direct, fastmail
 - **Caddy**: Web UI + API now at **https://bifrost.dev.ankitson.com** (private_only / LAN+Tailscale).
   Route added to `homeserver:volumes/caddy/dev.Caddyfile` (`reverse_proxy bifrost:8080`; Caddy is on

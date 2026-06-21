@@ -54,6 +54,10 @@ Garmin / banking / Playnite / AoE4-replay / X-bookmarks pipelines on Dagster
   grounded answer in one call while destructive websets ops stay manual. **Verified end-to-end**:
   `nvidia/meta/llama-3.1-8b-instruct` web-searched and answered. This also satisfies the search ask
   (via Exa; Brave not needed). `just bifrost-mcp-tools` / `just bifrost-test-search`.
+- **SillyTavern (2026-06-20)**: added the `sillytavern` service (`ghcr.io/sillytavern/sillytavern`),
+  pointed at Bifrost (Custom OpenAI-compatible → `http://bifrost:8080/openai/v1`, pre-seeded model
+  `nvidia/meta/llama-3.1-8b-instruct`). Reverse-proxy posture via compose env vars; Web UI at
+  **https://sillytavern.dev.ankitson.com** (private_only). Verified ST → Bifrost end to end.
 - **Follow-ups (2026-06-20)**: Web UI/API exposed at **https://bifrost.dev.ankitson.com** (private_only;
   route in homeserver `dev.Caddyfile`). **Mistral BYOK** confirmed working via OpenRouter; **DeepSeek
   can't BYOK on OpenRouter** (no DeepSeek-direct endpoint) so added a **direct `deepseek` provider**

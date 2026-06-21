@@ -60,6 +60,32 @@ services:
     ports:
       - "127.0.0.1:${BIFROST_PORT:-8090}:8080"   # local debug + Web UI; LAN/TLS via Caddy
 
+  # ── SillyTavern: LLM chat frontend, pointed at Bifrost ──────────────
+  # Web UI on 8000. On mybridge so it reaches the gateway at http://bifrost:8080.
+  # Off-box access is gated by Caddy (private_only); whitelistMode is disabled in
+  # volumes/sillytavern/config/config.yaml so Caddy can reverse-proxy it. To wire it
+  # to Bifrost in the UI: API Connections -> Chat Completion -> Custom (OpenAI-compatible),
+  # Endpoint = http://bifrost:8080/openai/v1, any non-empty API key, then enter a model
+  # id like openrouter/openai/gpt-oss-20b:free or nvidia/meta/llama-3.1-8b-instruct.
+  sillytavern:
+    image: ghcr.io/sillytavern/sillytavern:latest
+    container_name: sillytavern
+    hostname: sillytavern
+    restart: unless-stopped
+    environment:
+      # Reverse-proxy posture (config.yaml lives in the gitignored volume, so set it
+      # declaratively here). Access is gated by Caddy private_only; ST itself is open.
+      - SILLYTAVERN_LISTEN=true
+      - SILLYTAVERN_WHITELISTMODE=false
+      - SILLYTAVERN_SECURITYOVERRIDE=true
+    volumes:
+      - ./volumes/sillytavern/config:/home/node/app/config
+      - ./volumes/sillytavern/data:/home/node/app/data
+      - ./volumes/sillytavern/plugins:/home/node/app/plugins
+      - ./volumes/sillytavern/extensions:/home/node/app/public/scripts/extensions/third-party
+    ports:
+      - "127.0.0.1:${SILLYTAVERN_PORT:-8001}:8000"   # local debug; LAN/TLS via Caddy
+
   # ── MCPProxy: shared MCP gateway with upstream OAuth and scoped agent tokens ─
   # Host networking is required for OAuth providers that redirect to MCPProxy's
   # loopback callback listener. The HTTP API still binds only to mybridge's host
