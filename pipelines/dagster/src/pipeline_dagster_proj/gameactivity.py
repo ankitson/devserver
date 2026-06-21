@@ -30,6 +30,7 @@ from pipeline_shared.schema import ensure_schema
 
 from pipeline_dagster_proj.landing_zone import (
     archive_batch,
+    is_pc_wake_blackout,
     scan_ready_batches,
 )
 
@@ -132,6 +133,9 @@ def playnite_gameactivity_job():
 )
 def playnite_landing_sensor(context: SensorEvaluationContext):
     """Poll landing_zone/playnite-gameactivity/ for ready batches."""
+    if is_pc_wake_blackout():
+        return SkipReason("PC wake blackout: skipping 08:00-08:05 America/Los_Angeles")
+
     batches = scan_ready_batches(PIPELINE_NAME)
     if not batches:
         return SkipReason("no ready batches")

@@ -23,6 +23,7 @@ import shutil
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import psycopg
 
@@ -34,6 +35,9 @@ FAILED_DIRNAME = "_failed"
 
 READY_MARKER = "_READY"
 TMP_SUFFIX = ".tmp"
+PACIFIC_TZ = ZoneInfo("America/Los_Angeles")
+WAKE_BLACKOUT_START_HOUR = 8
+WAKE_BLACKOUT_MINUTES = 5
 
 
 def landing_zone_root() -> Path:
@@ -41,6 +45,15 @@ def landing_zone_root() -> Path:
     without docker."""
     raw = os.environ.get("LANDING_ZONE_DIR", "/landing_zone")
     return Path(raw)
+
+
+def is_pc_wake_blackout(now: datetime | None = None) -> bool:
+    """Skip landing-zone scans while the PC and Synology mount settle."""
+    local_now = (now or datetime.now(timezone.utc)).astimezone(PACIFIC_TZ)
+    return (
+        local_now.hour == WAKE_BLACKOUT_START_HOUR
+        and 0 <= local_now.minute < WAKE_BLACKOUT_MINUTES
+    )
 
 
 def mark_batch(database_url: str, pipeline: str, batch_id: str, **fields) -> None:

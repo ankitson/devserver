@@ -38,6 +38,7 @@ from pipeline_dagster_proj.landing_zone import (
     READY_MARKER,
     TMP_SUFFIX,
     archive_batch,
+    is_pc_wake_blackout,
     mark_batch,
     scan_ready_batches,
 )
@@ -108,6 +109,11 @@ def make_copy_pipeline(*, pipeline_name: str, dest_dir: str):
     @sensor(name=sensor_name, job=copy_job, minimum_interval_seconds=30,
             default_status=DefaultSensorStatus.RUNNING)
     def copy_sensor(context: SensorEvaluationContext):
+        if is_pc_wake_blackout():
+            return SkipReason(
+                "PC wake blackout: skipping 08:00-08:05 America/Los_Angeles"
+            )
+
         batches = scan_ready_batches(pipeline_name)
         if not batches:
             return SkipReason("no ready batches")

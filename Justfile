@@ -164,6 +164,11 @@ openrouter-byok-sync:
 openrouter-byok-list:
   python3 tools/openrouter_byok.py --list
 
+# Copy a SillyTavern Chat Completion preset JSON into the local user volume.
+sillytavern-preset-copy file:
+  mkdir -p "volumes/sillytavern/data/default-user/OpenAI Settings"
+  cp "{{file}}" "volumes/sillytavern/data/default-user/OpenAI Settings/"
+
 # List the MCP tools Bifrost discovered from mcpproxy (exa search + websets).
 bifrost-mcp-tools:
   curl -fsS {{BIFROST_URL}}/api/mcp/clients | python3 -c 'import sys,json; [ (print("client",c["config"]["name"]+":"), [print("  -",t["name"]) for t in c.get("tools",[])]) for c in json.load(sys.stdin)["clients"]]'

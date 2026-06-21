@@ -322,3 +322,27 @@ contract, and pending work. Full detail:
 - **Repro flow**: run `just dns-debug-on`, `just dns-probe-clean`, `just dns-probe-up`, and in a
   second terminal `just dns-probe-host-logs`. After wake, inspect the two JSONL logs and turn debug
   back down with `just dns-debug-off`.
+
+## 2026-06-19 - MCPProxy v0.43.0 search-filter check
+- **Goal**: update the shared MCPProxy gateway from v0.35.0 to v0.43.0 and retest whether
+  `retrieve_tools` returns `fastmail:update_event` for a write-intent calendar query.
+- **Image update**: rebuilt `ankit/mcpproxy:0.43.0` from the upstream v0.43.0 linux-amd64 release
+  tarball using the published checksum, then recreated only the `mcpproxy` service.
+- **Result**: the admin search endpoint ranks `fastmail:update_event` second for the query, but
+  MCP `retrieve_tools` still omits it when `exclude_destructive=true` because the tool lacks an
+  explicit `destructiveHint:false` annotation.
+
+## 2026-06-19 - OpenClaw high thinking defaults
+- **Goal**: make high thinking the default for newly created OpenClaw agents and for the configured
+  `main`, `gilfoyle`, and `austin` agents.
+- **Config shape**: OpenClaw uses `agents.defaults.thinkingDefault` for the inherited default and
+  `agents.list[].thinkingDefault` for per-agent overrides.
+- **Applied files**: updated the rendered startup patch, its template, and the live
+  `volumes/openclaw/openclaw.json` state so the setting is effective now and survives future
+  `just rs` renders.
+
+## 2026-06-20 - SillyTavern Chat Completion preset copy
+- **Finding**: Chat Completion preset JSON files can be installed directly by copying them into
+  `volumes/sillytavern/data/default-user/OpenAI Settings/`.
+- **Helper**: added `just sillytavern-preset-copy path/to/preset.json` as a thin wrapper around that
+  direct copy. Actual preset exports are user data and should not be tracked in this repo.
