@@ -27,8 +27,20 @@ contract, and pending work. Full detail:
 - `provider=digitalocean` expands to `provider.only:["digitalocean"]` and, by default,
   `provider.allow_fallbacks:false`.
 - `allow_fallbacks=true|false` overrides that default.
-- `order=a|b`, `only=a|b`, `ignore=a|b`, and generic `key=value` are passed into OpenRouter's
-  `provider` object.
+- `order=a|b`, `only=a|b`, and `ignore=a|b` are passed into OpenRouter's `provider` object.
+- Dotted directives set arbitrary OpenRouter request fields, e.g.
+  `deepseek/deepseek-v4-flash[provider.only=digitalocean,reasoning.effort=high]`.
+- Query-style suffixes work for shell-friendly params, e.g.
+  `deepseek/deepseek-v4-flash[?provider.only=digitalocean&reasoning.effort=high]`.
+- Raw JSON object suffixes are exact arbitrary request-body passthrough, e.g.
+  `deepseek/deepseek-v4-flash[{"provider":{"only":["digitalocean"],"allow_fallbacks":false},"reasoning":{"effort":"high"}}]`.
+  JSON is not mutated by the shorthand defaults; include `"allow_fallbacks":false` when the intent is
+  a hard provider pin.
+- Quoted JSON and `json64:...` payloads are accepted for clients or shells that make raw JSON awkward.
+- OpenCode requires model ids to be present in its configured model list; arbitrary unlisted suffixes fail
+  with `ProviderModelNotFoundError`. A configured JSON64 example is available as
+  `bifrost/openrouter/deepseek/deepseek-v4-flash[json64:eyJwcm92aWRlciI6eyJvbmx5IjpbImRpZ2l0YWxvY2VhbiJdLCJhbGxvd19mYWxsYmFja3MiOmZhbHNlfX0]`.
+  Clients that call Bifrost directly can send arbitrary suffix strings without OpenCode registration.
 #### Verification
 - `/api/plugins` reports `model-policy-suffix` active.
 - Negative route test
@@ -41,6 +53,16 @@ contract, and pending work. Full detail:
   `provider_name: DigitalOcean`, model `deepseek/deepseek-v4-flash-20260423`, and `preset_id:null`.
 - OpenCode call
   `bifrost/openrouter/deepseek/deepseek-v4-flash[zdr,provider=digitalocean]` returned
+- JSON suffix negative route test
+  `openrouter/deepseek/deepseek-v4-flash[{"provider":{"only":["definitely-not-a-provider"],"allow_fallbacks":false}}]`
+  returned OpenRouter 404 `No allowed providers are available`.
+- JSON suffix DigitalOcean route
+  `openrouter/deepseek/deepseek-v4-flash[{"provider":{"zdr":true,"data_collection":"deny","only":["digitalocean"],"allow_fallbacks":false}}]`
+  returned `JSON_SUFFIX_DO_OK`; OpenRouter generation `gen-1782519262-Agsv4Zb3PRmoKoh0DiHy`
+  reported `provider_name: DigitalOcean`, model `deepseek/deepseek-v4-flash-20260423`, and
+  `preset_id:null`.
+- OpenCode run with the configured JSON64 model returned `OPENCODE_JSON64_SUFFIX_OK`; Bifrost logs
+  show the plugin applied the suffix and stripped the upstream model to `deepseek/deepseek-v4-flash`.
   `OPENCODE_SUFFIX_DO_OK`; Bifrost logs show the plugin applied the policy and stripped the suffix.
 
 ### OpenCode DeepSeek v4 Pro ZDR Opt-In

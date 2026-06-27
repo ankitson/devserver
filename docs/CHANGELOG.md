@@ -24,6 +24,11 @@ Garmin / banking / Playnite / AoE4-replay / X-bookmarks pipelines on Dagster
 - Verified the suffix route without OpenRouter presets: impossible provider pins fail at
   OpenRouter, DigitalOcean pins report `provider_name: DigitalOcean`, and OpenCode succeeds through
   the suffix model.
+- Expanded the Bifrost suffix plugin to accept arbitrary OpenRouter request params from the model
+  string via raw JSON object, quoted JSON, `json64:...`, query-style, or dotted-key suffixes while
+  preserving the shorthand `[zdr,provider=...]` syntax.
+- Added a configured OpenCode `json64:` DS4 Flash DigitalOcean example, because OpenCode rejects
+  arbitrary unlisted model strings even though direct Bifrost calls can use them.
 
 ### OpenCode DeepSeek v4 Pro ZDR Preset
 - Added `zdr-deepseek-v4-pro` to `config/openrouter-presets.json`, routing
