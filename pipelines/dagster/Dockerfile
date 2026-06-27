@@ -17,6 +17,13 @@ RUN curl -fsSL https://download.docker.com/linux/static/stable/x86_64/docker-29.
     && rm /tmp/docker.tgz \
     && docker --version
 
+# ClickHouse local is used by the Hacker News import job to attach and query
+# ClickHouse's public S3-backed `hackernews_history` dataset without running a
+# separate ClickHouse server.
+RUN curl -fsSL https://clickhouse.com/ | sh \
+    && mv clickhouse /usr/local/bin/clickhouse \
+    && clickhouse local --version
+
 WORKDIR /app
 
 COPY shared /app/shared

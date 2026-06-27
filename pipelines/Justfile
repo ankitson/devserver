@@ -127,6 +127,12 @@ lz-gc:
   @docker exec pipeline-dagster bash -lc \
     "cd /app/dagster && uv run dagster job launch -j landing_zone_gc_job -m pipeline_dagster_proj.definitions" | tail -3
 
+# Import latest stories/comments for HN_USERNAMES from ClickHouse's updating
+# hackernews_history dataset into Postgres table hn_user_items.
+hn-import:
+  @docker exec pipeline-dagster bash -lc \
+    "cd /app/dagster && uv run dagster job launch -j hackernews_user_items_import_job -m pipeline_dagster_proj.definitions" | tail -3
+
 # List ready (un-archived) batches + last 20 entries in the batch ledger.
 lz-status:
   @echo "=== ready (pre-archive) ==="
