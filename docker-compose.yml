@@ -48,7 +48,9 @@ services:
   # Integration endpoints: /openai/v1 (OpenAI-compatible), /anthropic (Claude Code),
   # /genai (Gemini). Web UI + request logs at http://127.0.0.1:8090.
   bifrost:
-    image: maximhq/bifrost:latest
+    image: ankit/bifrost-dynamic:local
+    build:
+      context: /projects/dockers/bifrost-dynamic
     container_name: bifrost
     hostname: bifrost
     restart: unless-stopped

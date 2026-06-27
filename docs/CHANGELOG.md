@@ -8,6 +8,43 @@ Garmin / banking / Playnite / AoE4-replay / X-bookmarks pipelines on Dagster
 (+ DBOS / Restate experiments). Full detail:
 [`pipelines/docs/CHANGELOG.md`](../pipelines/docs/CHANGELOG.md).
 
+## 2026-06-26
+
+### Bifrost Model-Policy Suffix Plugin
+- Switched the `bifrost` Compose service to build `/projects/dockers/bifrost-dynamic` as
+  `ankit/bifrost-dynamic:local`.
+- Added `model-policy-suffix` to `config/bifrost.config.json.tmpl` and the live rendered Bifrost
+  config, loading `/app/plugins/model-policy-suffix.so`.
+- Updated OpenCode's default model to
+  `bifrost/openrouter/deepseek/deepseek-v4-pro[zdr,provider=digitalocean]`.
+- Replaced visible OpenCode preset routes with suffix routes, including
+  `bifrost/openrouter/deepseek/deepseek-v4-flash[zdr,provider=digitalocean]`.
+- Removed the DS4 Flash DigitalOcean preset from the declarative preset config so new
+  model/provider combinations are managed by Bifrost suffixes instead.
+- Verified the suffix route without OpenRouter presets: impossible provider pins fail at
+  OpenRouter, DigitalOcean pins report `provider_name: DigitalOcean`, and OpenCode succeeds through
+  the suffix model.
+
+### OpenCode DeepSeek v4 Pro ZDR Preset
+- Added `zdr-deepseek-v4-pro` to `config/openrouter-presets.json`, routing
+  `deepseek/deepseek-v4-pro` through OpenRouter with `provider.zdr:true` and
+  `provider.data_collection:"deny"`. Updated it to pin `provider.only:["digitalocean"]` with
+  `allow_fallbacks:false`.
+- Updated `~/.config/opencode/opencode.jsonc` to expose
+  `bifrost/openrouter/@preset/zdr-deepseek-v4-pro` and make it the default model, while keeping
+  `bifrost/openrouter/deepseek/deepseek-v4-pro` available for non-ZDR opt-out.
+- Added OpenRouter preset `zdr-deepseek-v4-flash-digitalocean` and exposed it in OpenCode as
+  `bifrost/openrouter/@preset/zdr-deepseek-v4-flash-digitalocean`.
+- Restricted OpenCode's visible provider set to `enabled_providers:["bifrost"]` without changing the
+  auth store, and added `~/.config/opencode/plugins/bifrost-passthrough-headers.js` to attach
+  `x-bf-passthrough-extra-params:true` on Bifrost chat requests.
+- Removed the misleading DS4 Flash `model.options.provider` example from OpenCode config after
+  OpenRouter logs showed that OpenCode did not transmit it as raw provider-routing JSON.
+- Synced the preset to OpenRouter and verified it through Bifrost.
+- Documented the Bifrost source/discussion finding: stock aliases/routing do not inject OpenRouter
+  `provider` fields; central Bifrost-owned policy would require `extra_params` per request or a
+  custom plugin on a dynamically linked Bifrost build.
+
 ## Bifrost LLM gateway (2026-06-20)
 - Added the `bifrost` compose service (`maximhq/bifrost:latest`) — a Go OpenAI/Anthropic-compatible
   LLM gateway alongside the existing LiteLLM one. On `mybridge`; other services reach it at

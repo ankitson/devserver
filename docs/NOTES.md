@@ -8,6 +8,89 @@ Production status, Garmin API quirks, auth/rate-limit notes, landing-zone
 contract, and pending work. Full detail:
 [`pipelines/docs/NOTES.md`](../pipelines/docs/NOTES.md).
 
+## 2026-06-26
+
+### Bifrost Model-Policy Suffix Plugin
+#### Decision
+- Replaced the "one OpenRouter preset per model/provider" approach with a custom Bifrost image from
+  `/projects/dockers/bifrost-dynamic`.
+- Bifrost now loads `/app/plugins/model-policy-suffix.so`, which parses a trailing OpenRouter model
+  suffix such as `deepseek/deepseek-v4-flash[zdr,provider=digitalocean]`.
+- The plugin strips the suffix before provider routing and injects OpenRouter's upstream
+  `provider` request-body object via Bifrost `ExtraParams`.
+- Active OpenCode default:
+  `bifrost/openrouter/deepseek/deepseek-v4-pro[zdr,provider=digitalocean]`.
+- DS4 Flash DigitalOcean/ZDR example:
+  `bifrost/openrouter/deepseek/deepseek-v4-flash[zdr,provider=digitalocean]`.
+#### Suffix syntax
+- `zdr` expands to `provider.zdr:true` and `provider.data_collection:"deny"`.
+- `provider=digitalocean` expands to `provider.only:["digitalocean"]` and, by default,
+  `provider.allow_fallbacks:false`.
+- `allow_fallbacks=true|false` overrides that default.
+- `order=a|b`, `only=a|b`, `ignore=a|b`, and generic `key=value` are passed into OpenRouter's
+  `provider` object.
+#### Verification
+- `/api/plugins` reports `model-policy-suffix` active.
+- Negative route test
+  `openrouter/deepseek/deepseek-v4-flash[provider=definitely-not-a-provider]` returned OpenRouter
+  404 `No allowed providers are available`, proving the suffix reached OpenRouter as provider
+  routing policy.
+- Direct Bifrost call
+  `openrouter/deepseek/deepseek-v4-flash[zdr,provider=digitalocean]` returned
+  OpenRouter generation `gen-1782518325-zVFyzTnLvtvl58676pmr`; metadata reported
+  `provider_name: DigitalOcean`, model `deepseek/deepseek-v4-flash-20260423`, and `preset_id:null`.
+- OpenCode call
+  `bifrost/openrouter/deepseek/deepseek-v4-flash[zdr,provider=digitalocean]` returned
+  `OPENCODE_SUFFIX_DO_OK`; Bifrost logs show the plugin applied the policy and stripped the suffix.
+
+### OpenCode DeepSeek v4 Pro ZDR Opt-In
+#### Status
+- Legacy/superseded: OpenRouter presets still exist, but OpenCode now uses Bifrost model-policy
+  suffixes so new model/provider combinations do not require new OpenRouter presets.
+#### Decision
+- Added OpenRouter preset `zdr-deepseek-v4-pro` with `model: deepseek/deepseek-v4-pro` and
+  `provider: {zdr:true, data_collection:"deny", only:["digitalocean"], allow_fallbacks:false}`.
+  This keeps ZDR selection opt-in by model string instead of turning on OpenRouter account-wide
+  privacy enforcement, and pins DS4 to DigitalOcean instead of any ZDR provider.
+- Previously, OpenCode defaulted to `bifrost/openrouter/@preset/zdr-deepseek-v4-pro`. That has been
+  replaced by the suffix model above. The regular `bifrost/openrouter/deepseek/deepseek-v4-pro`
+  model remains listed for explicit opt-out.
+- OpenCode is configured with `enabled_providers:["bifrost"]`, so authenticated non-Bifrost
+  providers remain on disk but are hidden from OpenCode model/provider selection.
+- Previously added `zdr-deepseek-v4-flash-digitalocean` for DS4 Flash. Prefer the suffix model
+  `bifrost/openrouter/deepseek/deepseek-v4-flash[zdr,provider=digitalocean]`; keep
+  `bifrost/openrouter/deepseek/deepseek-v4-flash` only for default OpenRouter routing.
+#### Verification
+- `just openrouter-presets-sync` stored the preset live on OpenRouter.
+- `just bifrost-test openrouter/@preset/zdr-deepseek-v4-pro` returned `BIFROST_OK`.
+- `opencode models` lists only `bifrost/...` models after `enabled_providers:["bifrost"]`.
+- OpenRouter generation `gen-1782513184-lflS3t3ad9HW32o4sFYz` reported
+  `provider_name: DigitalOcean` and the same preset id after a Bifrost call.
+- OpenCode call `bifrost/openrouter/@preset/zdr-deepseek-v4-flash-digitalocean` returned
+  `DS4_FLASH_DO_OK` and Bifrost logged model `@preset/zdr-deepseek-v4-flash-digitalocean`.
+- Direct Bifrost call with the same preset returned OpenRouter generation
+  `gen-1782517414-ACqNHQ3wIkSwQQh0C1YB`; OpenRouter metadata reported
+  `provider_name: DigitalOcean` and model `deepseek/deepseek-v4-flash-20260423`.
+#### Bifrost-native ZDR management
+- Source/discussion check: Bifrost aliases and routing rules centralize model/provider resolution,
+  but the stock config schema does not let an alias inject arbitrary OpenRouter request-body fields
+  such as `provider.only`, `provider.zdr`, or `provider.data_collection`.
+- Bifrost can pass OpenRouter-specific fields with `extra_params`, gated by
+  `x-bf-passthrough-extra-params: true`; that is per request and requires client support.
+- OpenCode's current AI SDK runtime does not pass `model.options.provider` as raw OpenRouter
+  request-body JSON through a custom OpenAI-compatible provider. A DS4 Flash test configured this way
+  routed to GMICloud in OpenRouter logs, so the config now treats non-preset DS4 Flash as an explicit
+  opt-out/default-route model.
+- Added OpenCode plugin `~/.config/opencode/plugins/bifrost-passthrough-headers.js` to attach
+  `x-bf-passthrough-extra-params:true` to Bifrost chat requests. The header alone does not enforce
+  ZDR; it only permits Bifrost to preserve `extra_params` when a client can send them.
+- A true Bifrost-owned policy is possible via a custom plugin (`HTTPTransportPreHook` or
+  `PreLLMHook`) that injects the OpenRouter `provider` object before the upstream call. Operational
+  catch: the current `maximhq/bifrost:latest` container is statically linked, and Bifrost's Go plugin
+  docs require a dynamically linked binary to load `.so` plugins.
+- Superseded: OpenCode no longer needs OpenRouter presets for this use case because the dynamic
+  Bifrost image now owns suffix-based OpenRouter provider policy.
+
 ## 2026-06-20 - Bifrost LLM gateway
 - **What**: `bifrost` compose service (`maximhq/bifrost`), a second LLM gateway next to LiteLLM.
   OpenAI-compatible at `http://bifrost:8080` on `mybridge`; local UI/logs `http://127.0.0.1:8090`.
