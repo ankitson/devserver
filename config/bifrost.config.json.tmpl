@@ -146,6 +146,36 @@
       }
     },
 
+    "unsloth": {
+      "keys": [
+        {
+          "name": "unsloth-studio-key-1",
+          "value": "env.UNSLOTH_STUDIO_API_KEY",
+          "models": ["default"],
+          "weight": 1.0
+        }
+      ],
+      "network_config": {
+        "base_url": "http://desktop-win:8888",
+        "default_request_timeout_in_seconds": 600,
+        "stream_idle_timeout_in_seconds": 300,
+        "allow_private_network": true
+      },
+      "custom_provider_config": {
+        "base_provider_type": "openai",
+        "allowed_requests": {
+          "list_models": true,
+          "chat_completion": true,
+          "chat_completion_stream": true,
+          "text_completion": true,
+          "text_completion_stream": true,
+          "responses": true,
+          "responses_stream": true,
+          "embedding": true
+        }
+      }
+    },
+
     "speaches": {
       "keys": [
         {

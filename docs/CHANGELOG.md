@@ -8,7 +8,36 @@ Garmin / banking / Playnite / AoE4-replay / X-bookmarks pipelines on Dagster
 (+ DBOS / Restate experiments). Full detail:
 [`pipelines/docs/CHANGELOG.md`](../pipelines/docs/CHANGELOG.md).
 
+## 2026-06-27
+
+### Bifrost Unsloth stream timeout
+- Set Unsloth's Bifrost `stream_idle_timeout_in_seconds` to 300 seconds in the config template,
+  rendered local config, and live provider SQLite row.
+- Set opencode's Bifrost provider `timeout` and `chunkTimeout` options to 300000 ms so its client-side
+  request and chunk caps match the intended 5-minute window.
+
+
 ## 2026-06-26
+
+### Unsloth Studio provider
+- Added a Bifrost custom OpenAI-compatible provider `unsloth` pointed at the local Studio host, with
+  model `unsloth/default` for the active local Studio model.
+- Added `UNSLOTH_STUDIO_API_KEY` to the Bifrost env template, sourced from
+  `op://clankers/llm-windows/password`.
+- Added `bifrost/unsloth/default` to OpenCode's local Bifrost model list.
+- Updated OpenCode's `unsloth/default` metadata to advertise a 131072-token context window.
+- Updated the Windows Unsloth service to `unsloth==2026.6.9` / `unsloth_zoo==2026.6.7` and
+  llama.cpp `b9821`.
+- Updated the Windows `win-models` Unsloth defaults to 131072 context and removed the obsolete
+  `--simple-policy` llama installer flag so future llama.cpp updates work with current Studio.
+- Added `--reasoning-format deepseek` to the Windows Unsloth serve path and a persistent Studio
+  route shim that converts Gemma 4 `<think>...</think>` output back into OpenAI-style
+  `reasoning_content` before Bifrost sees it.
+- Verified `unsloth/default` through Bifrost with a streaming prompt above the previous 4096-token
+  limit.
+- Verified Gemma 4 thinking remains visible as metadata: direct Studio streams emit
+  `delta.reasoning_content`, and Bifrost normalizes that to `delta.reasoning`/`reasoning_details`
+  while keeping `delta.content` clean.
 
 ### Bifrost Model-Policy Suffix Plugin
 - Switched the `bifrost` Compose service to build `/projects/dockers/bifrost-dynamic` as

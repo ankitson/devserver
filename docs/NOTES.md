@@ -8,7 +8,82 @@ Production status, Garmin API quirks, auth/rate-limit notes, landing-zone
 contract, and pending work. Full detail:
 [`pipelines/docs/NOTES.md`](../pipelines/docs/NOTES.md).
 
+## 2026-06-27
+
+### Bifrost Unsloth Stream Timeout
+#### Discovery
+- Unsloth's Bifrost `default_request_timeout_in_seconds` was already 600 seconds in both the rendered
+  config and live `/api/providers` output.
+- The 120-second cap came from Bifrost's streaming idle fallback:
+  `DefaultStreamIdleTimeout = 120 * time.Second`. Streaming opencode requests can hit that when the
+  local model takes longer than two minutes before sending the next SSE chunk.
+#### Decision
+- Keep Unsloth's total request timeout at 600 seconds and set only its provider-level stream idle
+  timeout to 300 seconds.
+- Set opencode's Bifrost provider `timeout` and `chunkTimeout` to 300000 ms as an explicit client-side
+  match, even though opencode's schema documents 300000 ms as the request-timeout default.
+#### Verification
+- Updated `volumes/bifrost/config.db` for provider `unsloth` and restarted the `bifrost` container.
+- `/api/providers` now reports `stream_idle_timeout_in_seconds: 300` for `unsloth`, and the container
+  is healthy.
+
+
 ## 2026-06-26
+
+### Unsloth Studio Provider
+#### Decision
+- Added `unsloth` as a Bifrost custom OpenAI-compatible provider for the local Studio service. The
+  tracked template uses the short `desktop-win` host; private host suffixes belong in ignored runtime
+  config, not committed docs.
+- Exposed one model id, `unsloth/default`. Unsloth Studio's OpenAI-compatible chat schema documents
+  `model` as informational and uses the active loaded model, so `default` is the stable Bifrost handle.
+- Bifrost uses `UNSLOTH_STUDIO_API_KEY` from `config/bifrost.env.tmpl`, sourced from
+  `op://clankers/llm-windows/password`; OpenCode exposes it as `bifrost/unsloth/default`.
+#### Gotchas
+- The Studio API requires `Authorization: Bearer ...`; unauthenticated `GET /v1/models` returns 401.
+- If the 1Password value is the Studio login password rather than a long-lived `sk-unsloth-...` API
+  key, create an API key via Studio's `/api/auth/api-keys` flow and store that key in the same
+  1Password field or a dedicated field before rendering Bifrost secrets.
+- Studio 2026.6.9 honors `-c 131072`; earlier 2026.6.7 startup accepted the wrapper flags but still
+  launched `llama-server` with `-c 4096`.
+- Studio's `/v1/status` can still report `max_context_length:4096` even when `context_length` is
+  `131072` and `llama-server` is running with `-c 131072`; use the process command line or a
+  long-prompt smoke test as the source of truth.
+- Studio currently returns SSE for `/v1/chat/completions` even with `stream:false`; Bifrost streaming
+  works, but non-stream Bifrost calls can fail while parsing the SSE body as JSON.
+- Gemma 4 thinking: llama.cpp can separate thoughts with `--reasoning-format deepseek`, but Studio
+  wraps those deltas as `<think>...</think>` content for its own UI. The Windows `win-models`
+  launcher now applies an OpenAI route shim that splits Studio's wrapped stream back into
+  `delta.reasoning_content` before it leaves `/v1/chat/completions`, while keeping ordinary
+  `delta.content` free of `<think>` tags.
+- Bifrost normalizes Unsloth's `delta.reasoning_content` into `delta.reasoning` plus
+  `delta.reasoning_details`; clients should display those fields if they want visible thinking.
+- `opencode run` currently prints only final content in the terminal smoke test. OpenCode's TUI config
+  has a `display_thinking` keybind, so use the TUI surface when you want to inspect reasoning; the
+  provider/proxy stream is carrying the data either way.
+- Current `just unsloth serve-lan` launch keeps Studio server-side tools enabled (`--enable-tools`) on
+  a LAN-reachable port. Bearer auth gates access, but any client with the API key can trigger local
+  Studio tools, including terminal execution. Use `--disable-tools` for a chat-only LAN service.
+#### Verification
+- `http://desktop-win:8888/` responds with the Unsloth Studio UI from the host.
+- The local Studio OpenAPI document is reachable from inside the Bifrost container and shows
+  OpenAI-compatible `/v1/chat/completions`, `/v1/models`, `/v1/completions`,
+  `/v1/embeddings`, and `/v1/responses` endpoints behind HTTP Bearer auth.
+- Bifrost was recreated with `UNSLOTH_STUDIO_API_KEY` present in the container environment, and
+  `/api/providers` reports custom provider `unsloth` active.
+- Updated Windows Unsloth Studio to `unsloth==2026.6.9` and `unsloth_zoo==2026.6.7`.
+- Updated the Windows llama.cpp runtime to GitHub release `b9821`; Studio status reports
+  `llama_cpp_installed_tag:"b9821"` and `llama_cpp_latest_tag:"b9821"`.
+- `desktop-win` is running the active model
+  `unsloth/gemma-4-26B-A4B-it-qat-GGUF:UD-Q4_K_XL` with `context_length:131072` and `cache_type_kv:q8_0`.
+- A Bifrost streaming request to `unsloth/default` with a prompt larger than the old 4096-token
+  limit returned HTTP 200 and streamed output.
+- Direct Studio streaming test for `unsloth/default` returned separate `reasoning_content` and
+  answer content without `<think>` tags. The same request through Bifrost returned a first chunk with
+  `delta.reasoning`/`reasoning_details`, then normal `delta.content` chunks.
+- The repo-pinned Gemma 4 chat template was compared against the latest public
+  `google/gemma-4-26B-A4B-it` template; the custom template is still needed because it carries local
+  tool-call hardening and multimodal aliases not present in the upstream template.
 
 ### Bifrost Model-Policy Suffix Plugin
 #### Decision
