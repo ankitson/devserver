@@ -16,6 +16,13 @@ Garmin / banking / Playnite / AoE4-replay / X-bookmarks pipelines on Dagster
 - Set opencode's Bifrost provider `timeout` and `chunkTimeout` options to 300000 ms so its client-side
   request and chunk caps match the intended 5-minute window.
 
+### Bifrost 1.6.0 dynamic image
+- Updated `/projects/dockers/bifrost-dynamic` to build from upstream Bifrost transport tag
+  `transports/v1.6.0`, keeping the local `model-policy-suffix` plugin image published as
+  `ankit/bifrost-dynamic:local`.
+- Verified Docker Hub publishes `maximhq/bifrost:v1.6.0`; `maximhq/bifrost:latest` currently points
+  to the same amd64/arm64 image manifest.
+
 
 ## 2026-06-26
 

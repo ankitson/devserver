@@ -27,6 +27,22 @@ contract, and pending work. Full detail:
 - `/api/providers` now reports `stream_idle_timeout_in_seconds: 300` for `unsloth`, and the container
   is healthy.
 
+### Bifrost 1.6.0 Dynamic Image
+#### Discovery
+- `maximhq/bifrost:1.6.0` is not published, but `maximhq/bifrost:v1.6.0` is available.
+- `maximhq/bifrost:latest` currently resolves to the same amd64/arm64 manifest as
+  `maximhq/bifrost:v1.6.0`.
+- Upstream source tags are module-scoped; there is no root `v1.6.0` Git tag. The local HTTP transport
+  build checks out `transports/v1.6.0`.
+#### Decision
+- Keep Compose on the local dynamic image so the Go plugin remains available, and update that build
+  to check out upstream tag `transports/v1.6.0`.
+#### Verification
+- `go test ./...` passes for `/projects/dockers/bifrost-dynamic/policy-model-suffix`.
+- `docker compose build bifrost` rebuilt `ankit/bifrost-dynamic:local` successfully.
+- `docker compose up -d bifrost` recreated the running service; `/api/version` returns `v1.6.0`,
+  `/health` returns OK, and `/api/plugins` reports `model-policy-suffix` active.
+
 
 ## 2026-06-26
 
