@@ -10,6 +10,51 @@ contract, and pending work. Full detail:
 
 ## 2026-06-27
 
+### Codex/ChatGPT Subscription Through Bifrost (`codex` provider)
+#### Goal
+- Let Bifrost serve a ChatGPT Plus/Pro (Codex) subscription so any gateway client (SillyTavern,
+  opencode, etc.) can use `gpt-5.x` without burning paid API credits. Updates the old "Codex subs
+  DON'T work via Bifrost" note below — still true that **Bifrost has no built-in subscription auth**.
+#### Discovery
+- Bifrost upstream is **not** there yet: feature issues
+  [#2316](https://github.com/maximhq/bifrost/issues/2316) (device-code) and
+  [#4459](https://github.com/maximhq/bifrost/issues/4459) (auto-detect passthrough) are both OPEN;
+  PRs #2715/#2775 were closed. PR #4377 ("adds chatgpt passthrough") merged a static
+  `/chatgpt_passthrough` → `chatgpt.com/backend-api/codex` route, but the maintainer says it's "a bit
+  different" — it only helps the official Codex CLI (which still holds its own OAuth token), not
+  arbitrary OpenAI-compatible clients.
+- Proven community path (from #2316 comments): run a small OAuth shim that turns the subscription into
+  an OpenAI-compatible `/v1` endpoint, then register it as a custom Bifrost provider.
+#### Decision
+- Added a `codex-oauth` Compose service wrapping
+  [EvanZhouDev/openai-oauth](https://github.com/EvanZhouDev/openai-oauth) (chosen over
+  icebear0828/codex-proxy: single-purpose, auditable, leans on OpenAI's official `codex login` rather
+  than reimplementing OAuth). It reads a Codex `auth.json`, auto-refreshes, and proxies to
+  `chatgpt.com/backend-api/codex`, exposing `/v1/chat/completions` + `/v1/responses` on `:10531`.
+- Registered it in Bifrost as the custom provider `codex` (`base_url http://codex-oauth:10531`,
+  `base_provider_type: openai`, `models: ["*"]`), same shape as `unsloth`/`speaches`/`deepseek`.
+- **Wildcard works for custom providers now** (verified on a throwaway Bifrost of the same image):
+  `["*"]` resolves and routes any `codex/<id>` to the shim — `codex/gpt-5.3-codex-spark` returned a
+  real completion. This overturns the older NVIDIA-era gotcha ("custom providers can't wildcard");
+  no need to hand-maintain a model list. Use `just codex-oauth-models` to see what the account exposes
+  (currently `gpt-5.5`, `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.3-codex-spark`, `codex-auto-review`).
+- **Dedicated auth**, not the host `~/.codex`: Codex refresh tokens rotate, so a shared `auth.json`
+  would have the host CLI and the proxy invalidate each other. The proxy gets its own
+  `secrets/codex-oauth/auth.json` via a separate `codex login` (`just codex-oauth-login`).
+- Internal only (mybridge; loopback debug port `10531`), single seat, no token pooling — staying
+  inside the personal-use lane of OpenAI's terms.
+#### Verification
+- `docker compose build codex-oauth` builds `ankit/codex-oauth-proxy:local`; `openai-oauth` v1.0.2 and
+  `codex` bins present, `--help` OK, busybox `nc` available for the healthcheck.
+- Template renders to valid JSON with `codex` among providers; `docker compose config codex-oauth`
+  parses; running Bifrost config left untouched (still 7 providers, no `codex` yet).
+#### Next steps (manual — need `op` + browser)
+1. `just rs` (1Password unlocked) to render `secrets/bifrost.{env,config.json}` with the `codex` provider.
+2. `just codex-oauth-login` — dedicated `codex login --device-auth` (prints a code + URL; works
+   headless, no localhost:1455 port-forward needed).
+3. `just up --build codex-oauth` then `just up bifrost` (env changed → recreate, not restart).
+4. Verify: `just codex-oauth-models`, `just bifrost-providers` (codex active), `just codex-oauth-test`.
+
 ### Bifrost Unsloth Stream Timeout
 #### Discovery
 - Unsloth's Bifrost `default_request_timeout_in_seconds` was already 600 seconds in both the rendered
@@ -256,11 +301,15 @@ contract, and pending work. Full detail:
   spent; raised to $15 → ~$5 free). Free models don't draw it, but paid/BYOK calls need headroom for
   the BYOK fee — if paid calls 403 with "Key limit exceeded (total limit)", raise it at
   <https://openrouter.ai/settings/keys>.
-- **Claude/Codex subs DON'T work via Bifrost**: it proxies **API keys only**. Claude Code and Codex
-  CLI both prefer their own subscription OAuth and have to be logged out to point at a gateway —
-  there's no way to ride a Pro/Max/ChatGPT subscription through Bifrost. The `anthropic`/`openai`
+- **Claude/Codex subs DON'T work via Bifrost** (natively): it proxies **API keys only**. Claude Code
+  and Codex CLI both prefer their own subscription OAuth and have to be logged out to point at a
+  gateway — Bifrost has no built-in subscription pass-through. The `anthropic`/`openai`
   providers here are API-key billed (and the `anthropic-key1` key currently has $0 balance, so
   Claude-via-Bifrost 400s with "credit balance too low" until funded).
+  **UPDATE 2026-06-27:** worked around for ChatGPT/Codex by adding the `codex-oauth` shim service +
+  Bifrost custom provider `codex` (see the 2026-06-27 "Codex/ChatGPT Subscription Through Bifrost"
+  entry above). The same pattern (an OAuth→OpenAI shim as a custom provider) could ride a Claude Max
+  subscription if wanted.
 - **Free-model flakiness**: OpenRouter free models are heavily shared/rate-limited — expect 429s on
   hot ones (llama-3.3-70b, qwen3-coder) and occasional slow ones (bumped the openrouter
   `default_request_timeout_in_seconds` to 120). `openai/gpt-oss-20b:free` was reliable in testing.

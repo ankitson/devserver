@@ -62,6 +62,37 @@ services:
     ports:
       - "127.0.0.1:${BIFROST_PORT:-8090}:8080"   # local debug + Web UI; LAN/TLS via Caddy
 
+  # ── codex-oauth: ChatGPT/Codex subscription -> OpenAI-compatible /v1 ─────────
+  # Lets Bifrost ride a ChatGPT Plus/Pro subscription (no API credits) by wrapping
+  # EvanZhouDev/openai-oauth: it reads a Codex OAuth auth.json, auto-refreshes the
+  # token, and proxies to chatgpt.com/backend-api/codex. Bifrost registers it as the
+  # custom `codex` provider (base_url http://codex-oauth:10531; see bifrost.config.json.tmpl).
+  # On mybridge so Bifrost reaches it at http://codex-oauth:10531.
+  #
+  # AUTH IS A ONE-TIME MANUAL STEP — use a DEDICATED login, not the host's ~/.codex,
+  # so this proxy's rotating refresh token can't invalidate the host Codex CLI:
+  #   CODEX_HOME="$(pwd)/secrets/codex-oauth" codex login --device-auth
+  # --device-auth prints a code + URL (no localhost:1455 callback), so it works on this
+  # headless box without port-forwarding. The auth.json is password-equivalent; secrets/ gitignored.
+  # ToS: personal single-seat use only — internal (no LAN port), no token pooling.
+  codex-oauth:
+    image: ankit/codex-oauth-proxy:local
+    build:
+      context: /projects/dockers/codex-oauth-proxy
+    container_name: codex-oauth
+    hostname: codex-oauth
+    restart: unless-stopped
+    volumes:
+      - ./secrets/codex-oauth:/codex   # dedicated auth.json (rw: proxy refreshes it); gitignored
+    ports:
+      - "127.0.0.1:${CODEX_OAUTH_PORT:-10531}:10531"   # local debug only; service-to-service via hostname
+    healthcheck:
+      test: ["CMD", "nc", "-z", "127.0.0.1", "10531"]   # liveness only; avoids hitting chatgpt upstream
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
   # ── SillyTavern: LLM chat frontend, pointed at Bifrost ──────────────
   # Web UI on 8000. On mybridge so it reaches the gateway at http://bifrost:8080.
   # Off-box access is gated by Caddy (private_only); whitelistMode is disabled in

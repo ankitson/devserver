@@ -143,6 +143,36 @@ bifrost-test-pin model="openrouter/deepseek/deepseek-v4-flash" provider="wafer":
     -d '{"model":"{{model}}","messages":[{"role":"user","content":"Reply with exactly: PIN_OK"}],"max_tokens":16,"extra_params":{"provider":{"only":["{{provider}}"],"allow_fallbacks":false}}}' \
     | python3 -c 'import sys,json; d=json.load(sys.stdin); print((d["choices"][0]["message"]["content"].strip()+" | resolved="+str(d.get("model"))) if d.get("choices") else "ERR "+str(d.get("status_code"))+" "+json.dumps(d.get("error",{})))'
 
+# ── codex-oauth (ChatGPT/Codex subscription -> Bifrost `codex` provider) ─────
+# One-time auth: log a DEDICATED Codex session into secrets/codex-oauth/auth.json
+# (kept separate from the host's ~/.codex so refresh tokens never contend).
+# --device-auth prints a code + URL you open on any device — no localhost callback,
+# so it works on this headless box without SSH port-forwarding.
+codex-oauth-login:
+  mkdir -p {{SECRETS_DIR}}/codex-oauth
+  CODEX_HOME="$(pwd)/{{SECRETS_DIR}}/codex-oauth" codex login --device-auth
+  @echo "Wrote {{SECRETS_DIR}}/codex-oauth/auth.json — now: just up --build codex-oauth"
+
+# Build + (re)start the proxy, then confirm it can list account models (proves auth).
+codex-oauth-up:
+  {{COMPOSE}} up -d --build codex-oauth
+
+codex-oauth-logs:
+  {{COMPOSE}} logs -f codex-oauth
+
+# Verify the proxy is authed: list the Codex models your subscription exposes.
+codex-oauth-models:
+  curl -fsS --max-time 30 http://127.0.0.1:{{env('CODEX_OAUTH_PORT', '10531')}}/v1/models \
+    | python3 -c 'import sys,json; d=json.load(sys.stdin); print("\n".join("- "+m["id"] for m in d.get("data",[]))) or "no models (check auth)"'
+
+# End-to-end smoke test: call the subscription through Bifrost's `codex` provider.
+# Usage: just codex-oauth-test [model]
+codex-oauth-test model="codex/gpt-5.5":
+  curl -fsS --max-time 120 {{BIFROST_URL}}/openai/v1/chat/completions \
+    -H 'Content-Type: application/json' \
+    -d '{"model":"{{model}}","messages":[{"role":"user","content":"Reply with exactly: CODEX_OK"}],"max_tokens":20}' \
+    | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d["choices"][0]["message"]["content"].strip() if d.get("choices") else "ERR "+str(d.get("status_code"))+" "+json.dumps(d.get("error",{})))'
+
 # Sync declarative OpenRouter presets (config/openrouter-presets.json) to the
 # OpenRouter account. Presets bake provider routing server-side, so they survive
 # Bifrost (which strips the request-body `provider` field) — this is how we pin

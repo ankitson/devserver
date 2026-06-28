@@ -10,6 +10,29 @@ Garmin / banking / Playnite / AoE4-replay / X-bookmarks pipelines on Dagster
 
 ## 2026-06-27
 
+### Codex/ChatGPT subscription as Bifrost `codex` provider
+- Added `codex-oauth` Compose service (`ankit/codex-oauth-proxy:local`, built from
+  `/projects/dockers/codex-oauth-proxy/Dockerfile`) wrapping EvanZhouDev/openai-oauth: turns a ChatGPT
+  Plus/Pro subscription into an OpenAI-compatible `/v1` endpoint on `:10531`, auto-refreshing the
+  Codex OAuth token and proxying to `chatgpt.com/backend-api/codex`. Internal (mybridge + loopback
+  debug port); dedicated `auth.json` mounted from `secrets/codex-oauth/` (gitignored).
+- Registered the custom provider `codex` in `config/bifrost.config.json.tmpl`
+  (`base_url http://codex-oauth:10531`, `base_provider_type: openai`, `models: ["*"]`). Added
+  placeholder `CODEX_PROXY_API_KEY=none` to `config/bifrost.env.tmpl` (shim needs no key; Bifrost
+  requires a key entry).
+- Used `["*"]` rather than an explicit model list: a throwaway-Bifrost test (same image) proved the
+  wildcard now resolves for custom providers and routes any `codex/<id>` to the shim
+  (`codex/gpt-5.3-codex-spark` returned a real completion). This contradicts the older NVIDIA-era note
+  that custom providers can't wildcard — that limitation is fixed in this Bifrost version. The shim's
+  `/v1/models` is account-aware, so it (not a static list) is the source of truth for what exists.
+- Added Justfile recipes: `codex-oauth-login`, `codex-oauth-up`, `codex-oauth-logs`,
+  `codex-oauth-models`, `codex-oauth-test`.
+- Activation is manual (needs `op` + browser OAuth): `just rs` → `just codex-oauth-login` →
+  `just up --build codex-oauth` → `just up bifrost`. See NOTES for the full runbook.
+- Switched the `deepseek` custom provider from the explicit `deepseek-chat`/`deepseek-reasoner` list to
+  `models: ["*"]` (same now-verified wildcard support). `anthropic`/`openai` were already `["*"]`;
+  `nvidia` kept explicit (its NIM catalog is a fixed allowlist).
+
 ### Bifrost Unsloth stream timeout
 - Set Unsloth's Bifrost `stream_idle_timeout_in_seconds` to 300 seconds in the config template,
   rendered local config, and live provider SQLite row.
