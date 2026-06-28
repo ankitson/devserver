@@ -47,6 +47,16 @@ restart *args:
 logs *args:
   {{COMPOSE}} logs -f {{args}}
 
+# Check whether a published Bifrost image yet contains the MCP tool-ordering
+# cache fix (PR #4588). Exit 0 = available to pull; 10 = not yet.
+bifrost-check-fix:
+  uv run tools/check_bifrost_cache_fix.py
+
+# Leave this running in a tab: polls until the Bifrost cache fix ships, then
+# prints a banner + rings the bell. Optional interval seconds (default 3600).
+bifrost-watch *interval:
+  uv run tools/check_bifrost_cache_fix.py --watch {{interval}}
+
 build *args:
   {{COMPOSE}} build {{args}}
 
