@@ -29,7 +29,7 @@
       "command": "sh",
       "args": [
         "-lc",
-        "exec npx -y mcp-remote \"https://websetsmcp.exa.ai/mcp\""
+        "exec npx -y mcp-remote \"https://websetsmcp.exa.ai/mcp?exaApiKey=${EXA_API_KEY}\""
       ],
       "env": {
         "EXA_API_KEY": "${env:EXA_API_KEY}"

@@ -78,7 +78,7 @@ downstream token state together.
 2. Complete Fastmail OAuth and verify `just mcpproxy-auth-status`.
 3. Confirm Exa search tools are discovered after `npx` installs `exa-mcp-server@3.2.1`.
 4. Confirm Exa Websets tools are discovered after `npx` installs `mcp-remote` and connects to
-   `https://websetsmcp.exa.ai/mcp`.
+   Exa's hosted Websets endpoint with the key supplied from `EXA_API_KEY` at runtime.
 5. Generate and store the scoped agent token.
 6. Run authenticated `initialize` and `tools/list` requests through local and private HTTPS routes.
 7. Call a harmless Fastmail read tool, restart `mcpproxy`, and repeat the read call.
