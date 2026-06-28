@@ -2,6 +2,8 @@
 volumes/
 secrets/
 .env
+logs/*
+!logs/.gitkeep
 
 # Editor / local tooling
 .vscode
