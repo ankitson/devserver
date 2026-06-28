@@ -43,6 +43,10 @@ from pipeline_dagster_proj.gameactivity import (
     playnite_gameactivity_job,
     playnite_landing_sensor,
 )
+from pipeline_dagster_proj.hackernews import (
+    hackernews_user_items_import_job,
+    hackernews_user_items_import_schedule,
+)
 from pipeline_dagster_proj.housekeeping import (
     landing_zone_gc_job,
     landing_zone_gc_schedule,
@@ -237,11 +241,12 @@ defs = Definitions(
     jobs=[garmin_full_job, garmin_heal_job, bank_login_job, bank_resume_job,
           playnite_gameactivity_job, landing_zone_gc_job,
           aoe4_replays_copy_job, birdclaw_sync_bookmarks_job,
-          birdclaw_bookmarks_import_job],
+          birdclaw_bookmarks_import_job, hackernews_user_items_import_job],
     schedules=[garmin_daily_schedule, garmin_heal_schedule,
                landing_zone_gc_schedule,
                birdclaw_sync_bookmarks_schedule,
-               birdclaw_bookmarks_import_schedule],
+               birdclaw_bookmarks_import_schedule,
+               hackernews_user_items_import_schedule],
     sensors=[bank_otp_sensor, notifier_sensor, playnite_landing_sensor,
              aoe4_replays_landing_sensor],
     resources={
