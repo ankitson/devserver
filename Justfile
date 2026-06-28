@@ -47,6 +47,16 @@ restart *args:
 logs *args:
   {{COMPOSE}} logs -f {{args}}
 
+# Check whether a published Bifrost image yet contains the MCP tool-ordering
+# cache fix (PR #4588). Exit 0 = available to pull; 10 = not yet.
+bifrost-check-fix:
+  uv run tools/check_bifrost_cache_fix.py
+
+# Leave this running in a tab: polls until the Bifrost cache fix ships, then
+# prints a banner + rings the bell. Optional interval seconds (default 3600).
+bifrost-watch *interval:
+  uv run tools/check_bifrost_cache_fix.py --watch {{interval}}
+
 build *args:
   {{COMPOSE}} build {{args}}
 
@@ -143,6 +153,36 @@ bifrost-test-pin model="openrouter/deepseek/deepseek-v4-flash" provider="wafer":
     -d '{"model":"{{model}}","messages":[{"role":"user","content":"Reply with exactly: PIN_OK"}],"max_tokens":16,"extra_params":{"provider":{"only":["{{provider}}"],"allow_fallbacks":false}}}' \
     | python3 -c 'import sys,json; d=json.load(sys.stdin); print((d["choices"][0]["message"]["content"].strip()+" | resolved="+str(d.get("model"))) if d.get("choices") else "ERR "+str(d.get("status_code"))+" "+json.dumps(d.get("error",{})))'
 
+# ── codex-oauth (ChatGPT/Codex subscription -> Bifrost `codex` provider) ─────
+# One-time auth: log a DEDICATED Codex session into secrets/codex-oauth/auth.json
+# (kept separate from the host's ~/.codex so refresh tokens never contend).
+# --device-auth prints a code + URL you open on any device — no localhost callback,
+# so it works on this headless box without SSH port-forwarding.
+codex-oauth-login:
+  mkdir -p {{SECRETS_DIR}}/codex-oauth
+  CODEX_HOME="$(pwd)/{{SECRETS_DIR}}/codex-oauth" codex login --device-auth
+  @echo "Wrote {{SECRETS_DIR}}/codex-oauth/auth.json — now: just up --build codex-oauth"
+
+# Build + (re)start the proxy, then confirm it can list account models (proves auth).
+codex-oauth-up:
+  {{COMPOSE}} up -d --build codex-oauth
+
+codex-oauth-logs:
+  {{COMPOSE}} logs -f codex-oauth
+
+# Verify the proxy is authed: list the Codex models your subscription exposes.
+codex-oauth-models:
+  curl -fsS --max-time 30 http://127.0.0.1:{{env('CODEX_OAUTH_PORT', '10531')}}/v1/models \
+    | python3 -c 'import sys,json; d=json.load(sys.stdin); print("\n".join("- "+m["id"] for m in d.get("data",[]))) or "no models (check auth)"'
+
+# End-to-end smoke test: call the subscription through Bifrost's `codex` provider.
+# Usage: just codex-oauth-test [model]
+codex-oauth-test model="codex/gpt-5.5":
+  curl -fsS --max-time 120 {{BIFROST_URL}}/openai/v1/chat/completions \
+    -H 'Content-Type: application/json' \
+    -d '{"model":"{{model}}","messages":[{"role":"user","content":"Reply with exactly: CODEX_OK"}],"max_tokens":20}' \
+    | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d["choices"][0]["message"]["content"].strip() if d.get("choices") else "ERR "+str(d.get("status_code"))+" "+json.dumps(d.get("error",{})))'
+
 # Sync declarative OpenRouter presets (config/openrouter-presets.json) to the
 # OpenRouter account. Presets bake provider routing server-side, so they survive
 # Bifrost (which strips the request-body `provider` field) — this is how we pin
@@ -169,6 +209,16 @@ sillytavern-preset-copy file:
   mkdir -p "volumes/sillytavern/data/default-user/OpenAI Settings"
   cp "{{file}}" "volumes/sillytavern/data/default-user/OpenAI Settings/"
 
+# Start/rebuild the SillyTavern image-generation adapter backed by Bifrost.
+sillytavern-image-adapter-up:
+  {{COMPOSE}} up -d --build sillytavern-bifrost-image
+
+sillytavern-image-adapter-logs:
+  {{COMPOSE}} logs -f sillytavern-bifrost-image
+
+sillytavern-image-adapter-test:
+  python3 /projects/dockers/sillytavern-bifrost-image-adapter/smoke_test.py
+
 # List the MCP tools Bifrost discovered from mcpproxy (exa search + websets).
 bifrost-mcp-tools:
   curl -fsS {{BIFROST_URL}}/api/mcp/clients | python3 -c 'import sys,json; [ (print("client",c["config"]["name"]+":"), [print("  -",t["name"]) for t in c.get("tools",[])]) for c in json.load(sys.stdin)["clients"]]'
@@ -181,6 +231,11 @@ bifrost-test-search model="nvidia/meta/llama-3.1-8b-instruct" *query="What is th
     -H 'x-bf-mcp-include-clients: mcpproxy' \
     -d '{"model":"{{model}}","messages":[{"role":"user","content":"Use the web_search tool, then: {{query}}"}],"max_tokens":400}' \
     | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d["choices"][0]["message"].get("content") if d.get("choices") else "ERR "+json.dumps(d.get("error",{})))'
+
+# Probe Studio/Bifrost/direct llama behavior across Chat Completions vs
+# Responses and stream=true/false. Pass script flags after the recipe name.
+llm-api-matrix *args:
+  python3 scripts/llm_api_matrix.py {{args}}
 
 # Wipe Bifrost runtime state (config.db + logs.db). Forces a clean re-seed from
 # config/bifrost.config.json on next start. Does NOT touch the config file itself.
