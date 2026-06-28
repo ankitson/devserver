@@ -46,6 +46,30 @@ Garmin / banking / Playnite / AoE4-replay / X-bookmarks pipelines on Dagster
   `models: ["*"]` (same now-verified wildcard support). `anthropic`/`openai` were already `["*"]`;
   `nvidia` kept explicit (its NIM catalog is a fixed allowlist).
 
+### OpenClaw default model and image upgrade
+- Set the OpenClaw startup config patch to force `openai/gpt-5.4-mini` as the default model with no
+  fallback chain.
+- Removed the stale OpenCode provider override and OpenCode model entries that exposed
+  `opencode/mimo-v2.5-free` in the default-path model set.
+- Pinned the OpenClaw Compose build args to `OPENCLAW_VERSION=2026.6.10` and
+  `OPENCLAW_CODEX_VERSION=2026.6.10`.
+- Rebuilt and restarted the live `ankit/openclaw:local` image; the running container reports
+  `openclaw@2026.6.10` and `@openclaw/codex@2026.6.10`.
+- Seeded missing isolated Codex auth homes for the `main` and `austin` OpenClaw agents from the host
+  Codex auth file.
+
+### Job Search dedicated service
+- Added a dedicated `job-search` Compose service built from `/projects/job-search` and tagged `ankit/job-search:local`.
+- Mounted the live job-search mutable directories into the container and mounted `~/.codex` for extract/fit/answers.
+- Pinned `agent-browser@0.27.1` in the image for hostile-page enrichment fallback support.
+- Added a 90-second stop grace period and healthcheck for `/api/stats`.
+- Built and started the service; a controlled restart exercised the app's SIGTERM shutdown path.
+
+### Pipeline Dagster NAS degraded-mode mounts
+- Temporarily replaced the `pipeline-dagster` `/mnt/synologydrive` bind sources for `/landing_zone` and `/aoe4-replays` with empty local placeholders under `./volumes/offline-synology/`.
+- Left the original NAS bind lines commented in `docker-compose.pipelines.yml` so the change can be reverted when the NAS returns.
+- Recreated `pipeline-dagster`; it is healthy with degraded empty landing directories.
+
 ### Bifrost Unsloth stream timeout
 - Set Unsloth's Bifrost `stream_idle_timeout_in_seconds` to 300 seconds in the config template,
   rendered local config, and live provider SQLite row.
@@ -59,6 +83,19 @@ Garmin / banking / Playnite / AoE4-replay / X-bookmarks pipelines on Dagster
 - Verified Docker Hub publishes `maximhq/bifrost:v1.6.0`; `maximhq/bifrost:latest` currently points
   to the same amd64/arm64 image manifest.
 
+### LLM API Matrix Probe
+- Added `scripts/llm_api_matrix.py` to compare Studio, Bifrost, and optional direct llama-server
+  behavior across Chat Completions, Responses, streaming, and non-streaming requests.
+- Added `just llm-api-matrix` for repeatable local probes.
+- The script detects SSE returned to a `stream:false` request, summarizes reasoning vs answer deltas,
+  and handles long-lived streams without crashing on client read timeout.
+
+### Unsloth Studio tools
+- Updated the Windows `win-models` launcher so Unsloth Studio defaults to `--disable-tools` for the
+  Bifrost/OpenCode model-server path.
+- Kept explicit opt-in available by forwarding extra Just recipe args, e.g. `--enable-tools` for
+  direct Studio UI sessions.
+- Restarted the live Windows Studio service with server-side tools disabled.
 
 ## 2026-06-26
 
@@ -300,3 +337,48 @@ Recipes: `just oc-build` / `oc-up` / `oc-logs` / `ab-logs`. Caddy routes:
 ### SillyTavern Chat Completion presets
 - Added a `just sillytavern-preset-copy` recipe to copy local Chat Completion preset JSON files into
   SillyTavern's `OpenAI Settings` user-volume directory.
+
+### SillyTavern image generation
+- Added an A1111-compatible image adapter that forwards
+  SillyTavern image requests to either Bifrost's OpenAI-compatible image-generation endpoint or
+  OpenRouter's image chat-completions endpoint.
+- Added the `sillytavern-bifrost-image` Compose service and Just recipes for starting/logging it.
+- Updated the live SillyTavern image-generation settings to use the adapter as the Stable Diffusion
+  WebUI source.
+- Switched the adapter backend through ignored runtime env and verified a real image generation.
+
+## 2026-06-22
+
+### SillyTavern ComfyUI image backend
+- Added a ComfyUI backend to the image adapter, including checkpoint/sampler/scheduler discovery and
+  a default txt2img workflow.
+- Reconfigured `sillytavern-bifrost-image` to use an external ComfyUI API configured by ignored env.
+- Added an adapter smoke test and the
+  `just sillytavern-image-adapter-test` recipe.
+- Updated the live SillyTavern image settings to use a ComfyUI model through the existing Stable
+  Diffusion WebUI source.
+- Disabled SillyTavern OpenAI media inlining in the live user settings so `/imagine me` prompt
+  generation does not send prior generated image attachments to a text-only DeepSeek/OpenRouter
+  model.
+- Added A1111-compatible no-op responses for `sd-vae`, `sd-modules`, and `latent-upscale-modes` in
+  the image adapter.
+- Increased Bifrost's OpenRouter request timeout from 120 to 600 seconds in the config template,
+  rendered config, and live provider sqlite row for long `/imagine scene` prompt-generation tests.
+- Fixed the image adapter's A1111 model switching by persisting POSTed `/sdapi/v1/options`
+  `sd_model_checkpoint` values and using the active checkpoint for `/txt2img` requests.
+- Moved the adapter's concrete runtime model values out of Compose and into ignored env/config, and
+  extended the smoke test to assert model switching sticks before generating an image.
+
+### SillyTavern ComfyUI workflows
+- Replaced the active SillyTavern ComfyUI workflow with the latest external copy.
+- Added a fixed-parameter ComfyUI workflow and set it as the active SillyTavern workflow.
+- Backed up the previous workflow and settings files under
+  `volumes/sillytavern/data/default-user/backups/`.
+- Verified the fixed workflow through the external ComfyUI API and saved a runtime smoke artifact.
+
+### SillyTavern image adapter relocation
+- Moved the adapter implementation out of devserver and into `/projects/dockers`.
+- Updated the Compose build context and Just smoke-test recipe to use the external adapter path.
+- Removed concrete image backend defaults from the adapter source and Dockerfile; runtime values now
+  come from ignored env files or live app settings.
+- Added a log ignore rule so generated smoke artifacts are not accidentally staged.
