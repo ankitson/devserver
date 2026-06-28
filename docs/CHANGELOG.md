@@ -31,6 +31,8 @@ Recipes: `just oc-build` / `oc-up` / `oc-logs` / `ab-logs`. Caddy routes:
 `openclaw.dev.ankitson.com` → gateway, `agentbrowser.dev.ankitson.com` → noVNC. See [`NOTES.md`](NOTES.md).
 
 ## MCPProxy gateway (2026-06-02)
+- Added the Exa Websets MCP upstream as `websets`, using Exa's hosted Websets endpoint via
+  `mcp-remote` and the existing `EXA_API_KEY` secret injection.
 - Added the Exa stdio MCP server from live Claude/Pi client configs to the
   MCPProxy upstream seed, using `EXA_API_KEY` from 1Password.
 - Added a host-networked `mcpproxy` service backed by the shared `ankit/mcpproxy:0.35.0` image.

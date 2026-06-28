@@ -24,6 +24,20 @@
       "enabled": true
     },
     {
+      "name": "websets",
+      "protocol": "stdio",
+      "command": "sh",
+      "args": [
+        "-lc",
+        "exec npx -y mcp-remote \"https://websetsmcp.exa.ai/mcp\""
+      ],
+      "env": {
+        "EXA_API_KEY": "${env:EXA_API_KEY}"
+      },
+      "skip_quarantine": true,
+      "enabled": true
+    },
+    {
       "name": "fastmail",
       "url": "https://api.fastmail.com/mcp",
       "protocol": "http",

@@ -73,3 +73,13 @@ contract, and pending work. Full detail:
 - **Rollout**: complete Fastmail authorization in a browser running on the devserver host, generate
   the shared downstream agent token, store it in 1Password, then smoke-test before wiring clients.
   See [`docs/2026-06-02-mcpproxy-gateway/README.md`](2026-06-02-mcpproxy-gateway/README.md).
+
+## 2026-06-04 - Exa Websets MCP upstream
+- **Goal**: add Exa Websets to the shared MCPProxy gateway alongside the existing Exa search
+  upstream.
+- **Decision**: use Exa's hosted Websets MCP endpoint through `npx -y mcp-remote` so the Exa API key
+  stays in the process environment as `${env:EXA_API_KEY}` instead of being stored literally in the
+  endpoint URL.
+- **Live config**: because `config/mcpproxy.seed.json` is seed-only after first boot, add or update
+  the live `websets` upstream in `/data/mcp_config.json` with the MCPProxy CLI when deploying this
+  change to an already-initialized volume.
