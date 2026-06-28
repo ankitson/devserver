@@ -119,6 +119,29 @@ services:
     ports:
       - "127.0.0.1:${SILLYTAVERN_PORT:-8001}:8000"   # local debug; LAN/TLS via Caddy
 
+  # ── SillyTavern image adapter: A1111-shaped API backed by external image services ─
+  # SillyTavern's OpenAI/OpenRouter image providers are hardcoded to their public
+  # APIs. This adapter uses the configurable Stable Diffusion WebUI source and
+  # translates /sdapi/v1/txt2img calls into a configured image backend.
+  sillytavern-bifrost-image:
+    build:
+      context: /projects/dockers/sillytavern-bifrost-image-adapter
+    image: ankit/sillytavern-bifrost-image:local
+    container_name: sillytavern-bifrost-image
+    restart: unless-stopped
+    depends_on:
+      - bifrost
+    ports:
+      - "127.0.0.1:7862:7860"
+    env_file:
+      - ./secrets/bifrost.env
+      - ./secrets/sillytavern-image.env
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:7860/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
   # ── MCPProxy: shared MCP gateway with upstream OAuth and scoped agent tokens ─
   # Host networking is required for OAuth providers that redirect to MCPProxy's
   # loopback callback listener. The HTTP API still binds only to mybridge's host
