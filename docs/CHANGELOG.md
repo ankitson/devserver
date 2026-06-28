@@ -10,6 +10,19 @@ Garmin / banking / Playnite / AoE4-replay / X-bookmarks pipelines on Dagster
 
 ## 2026-06-27
 
+### OpenClaw routed entirely through Bifrost
+- Added a custom `bifrost` provider to `config/openclaw.config.patch.json.tmpl`
+  (`baseUrl http://bifrost:8080/openai/v1`, `api: openai-completions`, `apiKey: none` — Bifrost has
+  `enforce_auth_on_inference: false`). Model ids carry Bifrost's `provider/model` prefix, so OpenClaw
+  refs are `bifrost/codex/gpt-5.4`, `bifrost/deepseek/deepseek-v4-flash`, etc. (Bifrost receives the
+  canonical `codex/gpt-5.4`).
+- Set `agents.defaults.models` to a `bifrost/*`-only allowlist, making Bifrost the **sole** provider
+  OpenClaw can use. Primary model is `bifrost/codex/gpt-5.4` (ChatGPT subscription, no API credits).
+- `fallbacks: []` — note the Codex sub is rate-limited (5h primary window); with no fallback, agents
+  error when the limit is hit. Candidate fallbacks if wanted: `bifrost/openai/gpt-5.4-mini` or
+  `bifrost/deepseek/deepseek-v4-flash`.
+- Apply: `just rs` → `just restart openclaw` (entrypoint re-applies the patch on start; no env change).
+
 ### Codex/ChatGPT subscription as Bifrost `codex` provider
 - Added `codex-oauth` Compose service (`ankit/codex-oauth-proxy:local`, built from
   `/projects/dockers/codex-oauth-proxy/Dockerfile`) wrapping EvanZhouDev/openai-oauth: turns a ChatGPT
