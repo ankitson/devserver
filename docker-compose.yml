@@ -48,7 +48,9 @@ services:
   # Integration endpoints: /openai/v1 (OpenAI-compatible), /anthropic (Claude Code),
   # /genai (Gemini). Web UI + request logs at http://127.0.0.1:8090.
   bifrost:
-    image: maximhq/bifrost:latest
+    image: ankit/bifrost-dynamic:local
+    build:
+      context: /projects/dockers/bifrost-dynamic
     container_name: bifrost
     hostname: bifrost
     restart: unless-stopped
@@ -59,6 +61,37 @@ services:
       - ./secrets/bifrost.config.json:/app/data/config.json:ro   # rendered from config/bifrost.config.json.tmpl by `just rs` (holds the mcpproxy bearer token)
     ports:
       - "127.0.0.1:${BIFROST_PORT:-8090}:8080"   # local debug + Web UI; LAN/TLS via Caddy
+
+  # ── codex-oauth: ChatGPT/Codex subscription -> OpenAI-compatible /v1 ─────────
+  # Lets Bifrost ride a ChatGPT Plus/Pro subscription (no API credits) by wrapping
+  # EvanZhouDev/openai-oauth: it reads a Codex OAuth auth.json, auto-refreshes the
+  # token, and proxies to chatgpt.com/backend-api/codex. Bifrost registers it as the
+  # custom `codex` provider (base_url http://codex-oauth:10531; see bifrost.config.json.tmpl).
+  # On mybridge so Bifrost reaches it at http://codex-oauth:10531.
+  #
+  # AUTH IS A ONE-TIME MANUAL STEP — use a DEDICATED login, not the host's ~/.codex,
+  # so this proxy's rotating refresh token can't invalidate the host Codex CLI:
+  #   CODEX_HOME="$(pwd)/secrets/codex-oauth" codex login --device-auth
+  # --device-auth prints a code + URL (no localhost:1455 callback), so it works on this
+  # headless box without port-forwarding. The auth.json is password-equivalent; secrets/ gitignored.
+  # ToS: personal single-seat use only — internal (no LAN port), no token pooling.
+  codex-oauth:
+    image: ankit/codex-oauth-proxy:local
+    build:
+      context: /projects/dockers/codex-oauth-proxy
+    container_name: codex-oauth
+    hostname: codex-oauth
+    restart: unless-stopped
+    volumes:
+      - ./secrets/codex-oauth:/codex   # dedicated auth.json (rw: proxy refreshes it); gitignored
+    ports:
+      - "127.0.0.1:${CODEX_OAUTH_PORT:-10531}:10531"   # local debug only; service-to-service via hostname
+    healthcheck:
+      test: ["CMD", "nc", "-z", "127.0.0.1", "10531"]   # liveness only; avoids hitting chatgpt upstream
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
   # ── SillyTavern: LLM chat frontend, pointed at Bifrost ──────────────
   # Web UI on 8000. On mybridge so it reaches the gateway at http://bifrost:8080.
@@ -85,6 +118,29 @@ services:
       - ./volumes/sillytavern/extensions:/home/node/app/public/scripts/extensions/third-party
     ports:
       - "127.0.0.1:${SILLYTAVERN_PORT:-8001}:8000"   # local debug; LAN/TLS via Caddy
+
+  # ── SillyTavern image adapter: A1111-shaped API backed by external image services ─
+  # SillyTavern's OpenAI/OpenRouter image providers are hardcoded to their public
+  # APIs. This adapter uses the configurable Stable Diffusion WebUI source and
+  # translates /sdapi/v1/txt2img calls into a configured image backend.
+  sillytavern-bifrost-image:
+    build:
+      context: /projects/dockers/sillytavern-bifrost-image-adapter
+    image: ankit/sillytavern-bifrost-image:local
+    container_name: sillytavern-bifrost-image
+    restart: unless-stopped
+    depends_on:
+      - bifrost
+    ports:
+      - "127.0.0.1:7862:7860"
+    env_file:
+      - ./secrets/bifrost.env
+      - ./secrets/sillytavern-image.env
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:7860/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
 
   # ── MCPProxy: shared MCP gateway with upstream OAuth and scoped agent tokens ─
   # Host networking is required for OAuth providers that redirect to MCPProxy's
@@ -137,6 +193,44 @@ services:
       - GODEBUG=${DNS_PROBE_GODEBUG:-netdns=go+1}
     volumes:
       - ./logs:/logs
+
+  # ── Job Search: dedicated tracker container with direct SQLite shutdown ─────
+  # Own service/image so Docker sends SIGTERM directly to the Bun server. The app
+  # handles that signal by stopping its worker, checkpointing WAL, and closing
+  # state/jobsearch.db before the container exits.
+  job-search:
+    build:
+      context: /projects/job-search
+      dockerfile: Dockerfile
+    image: ankit/job-search:local
+    container_name: job-search
+    hostname: job-search
+    user: "1000:1000"
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 90s
+    env_file:
+      - /projects/job-search/.env
+    environment:
+      - HOST=0.0.0.0
+      - PORT=9006
+      - RESUME_RENDER_URL=http://app-runner:3002/api/render
+    volumes:
+      - /projects/job-search/state:/app/state
+      - /projects/job-search/profile:/app/profile
+      - /projects/job-search/profiles:/app/profiles
+      - /projects/job-search/applications:/app/applications
+      - /projects/job-search/runtime:/app/runtime
+      # Codex CLI auth so extract/fit/answers endpoints work in the container.
+      - /home/ankit/.codex:/home/ankit/.codex
+    ports:
+      - "127.0.0.1:9006:9006"
+    healthcheck:
+      test: ["CMD", "bun", "-e", "const r=await fetch('http://127.0.0.1:9006/api/stats'); process.exit(r.ok?0:1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
 
   # ── Agent sandbox: devbox-image container that Hermes drives over SSH ──────
   agent-devbox:
