@@ -1,5 +1,27 @@
 # Open Threads / Gotchas
 
+## 2026-06-25 — Hacker News user item import
+
+### Goal
+Add a Dagster job that pulls recent stories/comments for configured Hacker
+News users from ClickHouse's updating `hackernews_history` dataset and stores
+them in the pipeline Postgres DB.
+
+### Decision
+The job uses `clickhouse local` inside the Dagster container to attach the
+public S3-backed dataset by UUID, so it does not need a separate ClickHouse
+server. It runs the author-filtered ClickHouse query directly and upserts the
+latest ReplacingMergeTree version for each returned item.
+`HN_USERNAMES` is a comma-separated list of HN handles, `HN_FETCH_LIMIT` caps
+how many latest items per user are stored each run, and
+`HN_CLICKHOUSE_TIMEOUT_SECONDS` defaults to 21600 because the remote scan can
+take a long time.
+
+### Operations
+The schedule runs daily at 04:30 UTC. Run manually with
+`just pipelines hn-import`. Set the desired comma-separated `HN_USERNAMES` in
+the rendered Dagster env file before relying on the schedule.
+
 ## Production status
 
 - **Dagster pipeline** is the active one. `garmin_daily_schedule` is RUNNING
