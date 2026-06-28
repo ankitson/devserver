@@ -44,6 +44,15 @@
     ]
   },
 
+  "plugins": [
+    {
+      "enabled": true,
+      "name": "model-policy-suffix",
+      "path": "/app/plugins/model-policy-suffix.so",
+      "version": 1
+    }
+  ],
+
   "providers": {
     "openrouter": {
       "keys": [
@@ -56,11 +65,7 @@
       ],
       "network_config": {
         "base_url": "https://openrouter.ai/api",
-        "default_request_timeout_in_seconds": 120,
-        "extra_headers": {
-          "HTTP-Referer": "https://dev.ankitson.com",
-          "X-Title": "bifrost-devserver"
-        }
+        "default_request_timeout_in_seconds": 600
       }
     },
 
@@ -86,6 +91,33 @@
       ]
     },
 
+    "codex": {
+      "keys": [
+        {
+          "name": "codex-oauth-noauth",
+          "value": "env.CODEX_PROXY_API_KEY",
+          "models": ["*"],
+          "weight": 1.0
+        }
+      ],
+      "network_config": {
+        "base_url": "http://codex-oauth:10531",
+        "default_request_timeout_in_seconds": 600,
+        "stream_idle_timeout_in_seconds": 300,
+        "allow_private_network": true
+      },
+      "custom_provider_config": {
+        "base_provider_type": "openai",
+        "allowed_requests": {
+          "list_models": true,
+          "chat_completion": true,
+          "chat_completion_stream": true,
+          "responses": true,
+          "responses_stream": true
+        }
+      }
+    },
+
     "nvidia": {
       "keys": [
         {
@@ -96,6 +128,7 @@
             "nvidia/llama-3.1-nemotron-nano-8b-v1",
             "nvidia/nvidia-nemotron-nano-9b-v2",
             "nvidia/llama-3.3-nemotron-super-49b-v1.5",
+            "nvidia/nemotron-3-ultra-550b-a55b",
             "mistralai/mistral-small-4-119b-2603"
           ],
           "weight": 1.0
@@ -120,7 +153,7 @@
         {
           "name": "deepseek-key-1",
           "value": "env.DEEPSEEK_API_KEY",
-          "models": ["deepseek-chat", "deepseek-reasoner"],
+          "models": ["*"],
           "weight": 1.0
         }
       ],
@@ -133,6 +166,36 @@
         "allowed_requests": {
           "chat_completion": true,
           "chat_completion_stream": true
+        }
+      }
+    },
+
+    "unsloth": {
+      "keys": [
+        {
+          "name": "unsloth-studio-key-1",
+          "value": "env.UNSLOTH_STUDIO_API_KEY",
+          "models": ["default"],
+          "weight": 1.0
+        }
+      ],
+      "network_config": {
+        "base_url": "http://desktop-win:8888",
+        "default_request_timeout_in_seconds": 600,
+        "stream_idle_timeout_in_seconds": 300,
+        "allow_private_network": true
+      },
+      "custom_provider_config": {
+        "base_provider_type": "openai",
+        "allowed_requests": {
+          "list_models": true,
+          "chat_completion": true,
+          "chat_completion_stream": true,
+          "text_completion": true,
+          "text_completion_stream": true,
+          "responses": true,
+          "responses_stream": true,
+          "embedding": true
         }
       }
     },

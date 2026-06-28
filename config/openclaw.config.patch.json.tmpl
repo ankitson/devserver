@@ -12,6 +12,18 @@
   },
   "agents": {
     "defaults": {
+      "model": {
+        "primary": "bifrost/codex/gpt-5.4",
+        "fallbacks": []
+      },
+      "models": {
+        "bifrost/openai/gpt-5.4-mini": {},
+        "bifrost/codex/gpt-5.5": {},
+        "bifrost/codex/gpt-5.4": {},
+        "bifrost/deepseek/deepseek-v4-flash": {},
+        "bifrost/deepseek/deepseek-v4-pro": {},
+        "bifrost/anthropic/claude-opus-4-8": {}
+      },
       "thinkingDefault": "high"
     },
     "list": [
@@ -40,6 +52,26 @@
   "auth": {
     "order": {
       "openai": ["openai:{{ op://clankers/codex/username }}", "openai:default"]
+    }
+  },
+  "models": {
+    "mode": "merge",
+    "providers": {
+      "opencode": null,
+      "bifrost": {
+        "baseUrl": "http://bifrost:8080/openai/v1",
+        "apiKey": "none",
+        "api": "openai-completions",
+        "contextWindow": 200000,
+        "models": [
+          { "id": "openai/gpt-5.4-mini", "name": "Bifrost · gpt-5.4-mini (OpenAI API key)" },
+          { "id": "codex/gpt-5.5", "name": "Bifrost · gpt-5.5 (ChatGPT sub)" },
+          { "id": "codex/gpt-5.4", "name": "Bifrost · gpt-5.4 (ChatGPT sub)" },
+          { "id": "deepseek/deepseek-v4-flash", "name": "Bifrost · DeepSeek V4 Flash" },
+          { "id": "deepseek/deepseek-v4-pro", "name": "Bifrost · DeepSeek V4 Pro" },
+          { "id": "anthropic/claude-opus-4-8", "name": "Bifrost · Claude Opus 4.8" }
+        ]
+      }
     }
   }
 }
