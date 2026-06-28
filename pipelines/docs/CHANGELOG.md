@@ -1,5 +1,20 @@
 # Devserver Changelog
 
+## 2026-06-25 — Hacker News user import
+
+- Added `hackernews_user_items_import_job`, which queries ClickHouse's
+  S3-backed `hackernews_history` dataset through `clickhouse local` and upserts
+  the latest stories/comments for `HN_USERNAMES` into Postgres.
+- Added the `hn_user_items` table and indexes to the shared pipeline schema.
+- Added `hackernews_user_items_import_schedule`, the `just pipelines hn-import`
+  manual trigger, and Dagster env template knobs `HN_USERNAMES`,
+  `HN_FETCH_LIMIT`, and `HN_CLICKHOUSE_TIMEOUT_SECONDS`.
+- Installed the ClickHouse binary in the Dagster image for local dataset
+  attachment without a separate ClickHouse server.
+- Changed `hackernews_user_items_import_schedule` to run daily at 04:30 UTC
+  with a RUNNING default status.
+- Decoded HTML entities in existing `hn_user_items` rows.
+
 ## 2026-06-10 — Fix birdclaw bookmarks import WAL sidecar access
 
 `birdclaw_bookmarks_import_job` was failing hourly with
