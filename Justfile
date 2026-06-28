@@ -47,6 +47,16 @@ restart *args:
 logs *args:
   {{COMPOSE}} logs -f {{args}}
 
+# Check whether a published Bifrost image yet contains the MCP tool-ordering
+# cache fix (PR #4588). Exit 0 = available to pull; 10 = not yet.
+bifrost-check-fix:
+  uv run tools/check_bifrost_cache_fix.py
+
+# Leave this running in a tab: polls until the Bifrost cache fix ships, then
+# prints a banner + rings the bell. Optional interval seconds (default 3600).
+bifrost-watch *interval:
+  uv run tools/check_bifrost_cache_fix.py --watch {{interval}}
+
 build *args:
   {{COMPOSE}} build {{args}}
 
@@ -199,6 +209,16 @@ sillytavern-preset-copy file:
   mkdir -p "volumes/sillytavern/data/default-user/OpenAI Settings"
   cp "{{file}}" "volumes/sillytavern/data/default-user/OpenAI Settings/"
 
+# Start/rebuild the SillyTavern image-generation adapter backed by Bifrost.
+sillytavern-image-adapter-up:
+  {{COMPOSE}} up -d --build sillytavern-bifrost-image
+
+sillytavern-image-adapter-logs:
+  {{COMPOSE}} logs -f sillytavern-bifrost-image
+
+sillytavern-image-adapter-test:
+  python3 /projects/dockers/sillytavern-bifrost-image-adapter/smoke_test.py
+
 # List the MCP tools Bifrost discovered from mcpproxy (exa search + websets).
 bifrost-mcp-tools:
   curl -fsS {{BIFROST_URL}}/api/mcp/clients | python3 -c 'import sys,json; [ (print("client",c["config"]["name"]+":"), [print("  -",t["name"]) for t in c.get("tools",[])]) for c in json.load(sys.stdin)["clients"]]'
@@ -211,6 +231,11 @@ bifrost-test-search model="nvidia/meta/llama-3.1-8b-instruct" *query="What is th
     -H 'x-bf-mcp-include-clients: mcpproxy' \
     -d '{"model":"{{model}}","messages":[{"role":"user","content":"Use the web_search tool, then: {{query}}"}],"max_tokens":400}' \
     | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d["choices"][0]["message"].get("content") if d.get("choices") else "ERR "+json.dumps(d.get("error",{})))'
+
+# Probe Studio/Bifrost/direct llama behavior across Chat Completions vs
+# Responses and stream=true/false. Pass script flags after the recipe name.
+llm-api-matrix *args:
+  python3 scripts/llm_api_matrix.py {{args}}
 
 # Wipe Bifrost runtime state (config.db + logs.db). Forces a clean re-seed from
 # config/bifrost.config.json on next start. Does NOT touch the config file itself.
