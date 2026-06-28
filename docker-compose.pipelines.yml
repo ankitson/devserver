@@ -97,8 +97,12 @@ services:
       - dagster-home:/app/dagster/.dagster_home
       # File-drop landing zone (clients on other machines mv files in here;
       # sensors pick them up). See landing_zone/README.md for the contract.
-      - /mnt/synologydrive/docs-root/projects/data-dropbox:/landing_zone
-      - /mnt/synologydrive/docs-root/gaming-backups/aoe4-replays:/aoe4-replays
+      # NAS degraded mode, 2026-06-27: keep the service startable while
+      # /mnt/synologydrive is offline. Restore these NAS binds when it returns:
+      # - /mnt/synologydrive/docs-root/projects/data-dropbox:/landing_zone
+      # - /mnt/synologydrive/docs-root/gaming-backups/aoe4-replays:/aoe4-replays
+      - ./volumes/offline-synology/data-dropbox:/landing_zone
+      - ./volumes/offline-synology/aoe4-replays:/aoe4-replays
       # Lets command-cron jobs `docker exec` into sibling containers
       # (e.g. birdclaw in app-runner). Grants host container control — consistent
       # with the devbox/app-runner setup.
