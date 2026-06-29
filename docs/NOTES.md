@@ -8,6 +8,27 @@ Production status, Garmin API quirks, auth/rate-limit notes, landing-zone
 contract, and pending work. Full detail:
 [`pipelines/docs/NOTES.md`](../pipelines/docs/NOTES.md).
 
+## 2026-06-29
+
+### Phoenix OTLP Trace Viewer
+#### Goal
+- Host a standard trace viewer for Azimuth workflow and agent runs, using OTLP as the interchange format.
+#### Decision
+- Added Phoenix as `phoenix` in `docker-compose.yml`.
+- Bound the UI and HTTP OTLP collector to `127.0.0.1:${PHOENIX_PORT:-6006}` and gRPC OTLP to
+  `127.0.0.1:${PHOENIX_GRPC_PORT:-4317}`.
+- Mounted `./volumes/phoenix:/mnt/data` and set `PHOENIX_WORKING_DIR=/mnt/data`, so Phoenix persists
+  its SQLite DB in the standard ignored `volumes/` tree.
+- Added `just phoenix-up`, `just phoenix-smoke`, `just phoenix-logs`, and
+  `just phoenix-post-autosweep-latest`.
+#### Verification
+- `docker compose config phoenix` validates.
+- `just phoenix-up` pulled and started `arizephoenix/phoenix:latest`.
+- `just phoenix-smoke` reaches the UI at `http://127.0.0.1:6006`.
+- Posted the 12-run autosweep post-cap batch through `http://127.0.0.1:6006/v1/traces`.
+- Phoenix persisted 12 traces and 2502 spans, including workflow events, LLM request/response spans,
+  and tool spans.
+
 ## 2026-06-27
 
 ### Codex/ChatGPT Subscription Through Bifrost (`codex` provider)

@@ -8,6 +8,14 @@ Garmin / banking / Playnite / AoE4-replay / X-bookmarks pipelines on Dagster
 (+ DBOS / Restate experiments). Full detail:
 [`pipelines/docs/CHANGELOG.md`](../pipelines/docs/CHANGELOG.md).
 
+## 2026-06-29
+
+### Phoenix OTLP Trace Viewer
+- Added a loopback-only Phoenix Compose service for Azimuth workflow and agent traces.
+- Persisted Phoenix state under `volumes/phoenix` and exposed the UI/HTTP OTLP endpoint on `127.0.0.1:6006`.
+- Added Just recipes to start Phoenix, smoke-test the UI, and post the latest autosweep OTLP batch.
+- Started Phoenix and ingested the latest 12 autosweep post-cap batch traces.
+
 ## 2026-06-27
 
 ### OpenClaw routed entirely through Bifrost

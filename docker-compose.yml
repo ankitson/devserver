@@ -272,6 +272,24 @@ services:
       - ${HOME}/.pi/agent/sessions:/agents/pi:ro
       - ${HOME}/hroot/devserver/volumes/hermes/sessions:/agents/hermes:ro
 
+  # ── Phoenix: OTLP trace viewer for Azimuth workflow and agent runs ─────────
+  # Canonical Azimuth traces are OTLP JSON files. Phoenix gives us a standard
+  # OpenTelemetry ingestion endpoint and UI: HTTP OTLP on :6006/v1/traces,
+  # gRPC OTLP on :4317, and the web UI on :6006. Bound to loopback only; add a
+  # Caddy route later if it needs a dev.ankitson.com hostname.
+  phoenix:
+    image: arizephoenix/phoenix:latest
+    container_name: phoenix
+    hostname: phoenix
+    restart: unless-stopped
+    environment:
+      - PHOENIX_WORKING_DIR=/mnt/data
+    volumes:
+      - ./volumes/phoenix:/mnt/data
+    ports:
+      - "127.0.0.1:${PHOENIX_PORT:-6006}:6006"
+      - "127.0.0.1:${PHOENIX_GRPC_PORT:-4317}:4317"
+
   # ── OpenClaw gateway: personal AI assistant, runs in its own devbox-image container ─
   # Drives a browser only over CDP (browser.profiles.sidecar -> openclaw-browser:9222),
   # so the GUI lives in the sidecar, not here. State restored from ./volumes/openclaw.

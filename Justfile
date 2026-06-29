@@ -103,6 +103,23 @@ openclaw-apps-logs:
 openclaw-apps-smoke slug="hello-openclaw":
   curl -fsS -H "Host: {{slug}}.dev.ankitson.com" http://127.0.0.1:18880/
 
+# ── Phoenix OTLP trace viewer ─────────────────────────────────────
+PHOENIX_URL := "http://127.0.0.1:6006"
+AUTOSWEEP_SPIKE := "/home/ankit/hroot/projects/autosweep-spike"
+
+phoenix-up:
+  {{COMPOSE}} up -d phoenix
+
+phoenix-logs:
+  {{COMPOSE}} logs -f phoenix
+
+phoenix-smoke:
+  curl -fsS {{PHOENIX_URL}}/ >/dev/null
+  @echo "Phoenix UI OK at {{PHOENIX_URL}}"
+
+phoenix-post-autosweep-latest:
+  cd {{AUTOSWEEP_SPIKE}}/pydantic && uv run export_otlp_traces.py --latest-postcap-batch --post-url {{PHOENIX_URL}}/v1/traces
+
 # ── Speaches-specific (no generic compose equivalent) ────────────────
 # Preload the default whisper model (downloads weights if not cached).
 speaches-pull model="deepdml/faster-whisper-large-v3-turbo-ct2":
