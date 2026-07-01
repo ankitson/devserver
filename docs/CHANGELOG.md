@@ -8,6 +8,75 @@ Garmin / banking / Playnite / AoE4-replay / X-bookmarks pipelines on Dagster
 (+ DBOS / Restate experiments). Full detail:
 [`pipelines/docs/CHANGELOG.md`](../pipelines/docs/CHANGELOG.md).
 
+## 2026-07-01
+
+### Bifrost: move Unsloth provider to the Windows Caddy hostname
+- Changed the tracked Bifrost `unsloth` provider base URL from `http://desktop-win:8888` to `https://unsloth.win.ankitson.com`.
+- Switched the Unsloth provider key from `models: ["default"]` to `models: ["*"]` so Bifrost exposes upstream-discovered Unsloth model IDs instead of a hardcoded alias.
+- Re-rendered `secrets/bifrost.config.json`, force-recreated `bifrost`, and verified `unsloth/default` still completes successfully through the gateway.
+
+### Bifrost: set Ollama provider pricing to zero
+- Added a `governance.pricing_overrides` entry in the Bifrost config template for `provider_id: "ollama"` with wildcard model matching and zero input/output token cost.
+- Covered the Ollama request types currently used in the stack: `chat_completion`, `text_completion`, `responses`, and `embedding`.
+- Re-rendered `secrets/bifrost.config.json`, force-recreated the live `bifrost` container, and verified the override through `GET /api/governance/pricing-overrides`.
+
+### OpenClaw: route memory embeddings through Bifrost with passthrough headers
+- Added `agents.defaults.memorySearch` config for the `openai-compatible` provider targeting `http://bifrost:8080/openai/v1`.
+- Set the embedding model to `ollama/nomic-embed-text:latest`, enabled `x-bf-passthrough-extra-params: true`, and configured `queryInputType` / `documentInputType` so Bifrost can map them into task prefixes.
+
+### Bifrost: add embedding task-prefix shim for Ollama embeddings
+- Enabled a second custom Bifrost plugin, `embedding-task-prefix`, from the local `ankit/bifrost-dynamic:local` image.
+- Added a rule for `ollama/nomic-embed-text*` that rewrites embedding inputs from `input_type=query|document` into literal `search_query:` / `search_document:` text prefixes and strips `input_type` before forwarding upstream.
+
+### Bifrost: repoint Ollama upstream to the Caddy hostname
+- Changed `OLLAMA_URL` from the raw Docker service address to `https://ollama.dev.ankitson.com`.
+- Kept the native Bifrost `ollama` provider config intact, so model discovery and embeddings now run through the Caddy/TLS endpoint.
+
+### Bifrost: add native Ollama provider for local models
+- Added `OLLAMA_URL=http://ollama:11434` to the Bifrost env template.
+- Registered Bifrost's native `ollama` provider with wildcard model discovery and per-key
+  `ollama_key_config.url`, so local Ollama models appear under `ollama/<model>` through
+  `/openai/v1/models`.
+- Added Just recipes to list discovered Ollama models and smoke-test embeddings with
+  `ollama/nomic-embed-text:latest`.
+
+### codex-oauth: replaced HTTP layer to fix reasoning-continuity bug
+- Root-caused OpenClaw's intermittent `⚠️ Agent couldn't generate a response` failures (gilfoyle's
+  cron loops especially) to a reasoning-continuity gap in `codex-oauth`'s upstream `openai-oauth`
+  package: it re-encodes full message history from scratch on every Chat Completions call, with
+  no way to preserve a reasoning model's state across a tool-call round trip. Confirmed the
+  server-managed fix (`store:true`/`previous_response_id`) isn't available on this backend at all.
+- Replaced `codex-oauth`'s entrypoint with a new `proxy-server.mjs` (plain Node, no framework)
+  implementing stateless client-managed reasoning continuity: caches each tool-calling turn's raw
+  reasoning + function_call items (via `include:["reasoning.encrypted_content"]`) keyed by that
+  turn's tool_call ids, splices them back into the request on replay. Reuses only
+  `openai-oauth`'s exported OAuth client.
+- Added `tests/test_reasoning_continuity.py`, a real repro/acceptance suite (fresh calls, tool
+  round trips, a gilfoyle-scale fixture built from its actual workspace files). Verified against
+  gilfoyle's real cron payload — was 100% failing (76 consecutive errors), now clean through full
+  multi-round loops.
+- Removed an earlier `patch-responses-state.mjs` Dockerfile patch (enabled `openai-oauth`'s unused
+  `CodexResponsesState` cache) after confirming it was inert for our traffic; superseded by the
+  proxy rewrite.
+
+## 2026-06-30
+
+### Bifrost Privacy Suffix Aliases
+- Extended the custom Bifrost `model-policy-suffix` plugin beyond OpenRouter so privacy directives can
+  be parsed for custom providers too.
+- Added `[tee]` / `[e2ee]` suffix support plus boolean and query-form variants.
+- Mapped OpenRouter `[tee]` to Phala-only ZDR routing with fallbacks disabled.
+- Mapped Venice `[e2ee]` friendly names to known `e2ee-*` model IDs while keeping real client-side
+  encryption as an explicit caller responsibility.
+- Rebuilt and restarted live Bifrost with the updated plugin.
+
+### NanoGPT Bifrost Provider
+- Added `NANOGPT_API_KEY` to the Bifrost env template using the 1Password `nanogpt` item.
+- Added NanoGPT as a Bifrost custom OpenAI-compatible provider with wildcard model routing, model
+  listing, chat completion, text completion, and embedding support.
+- Rendered the Bifrost secrets, recreated the live Bifrost service, and verified NanoGPT active with
+  603 models exposed through Bifrost, including 31 `nanogpt/TEE/...` models.
+
 ## 2026-06-29
 
 ### Phoenix OTLP Trace Viewer
@@ -54,6 +123,30 @@ Garmin / banking / Playnite / AoE4-replay / X-bookmarks pipelines on Dagster
   `models: ["*"]` (same now-verified wildcard support). `anthropic`/`openai` were already `["*"]`;
   `nvidia` kept explicit (its NIM catalog is a fixed allowlist).
 
+### OpenClaw default model and image upgrade
+- Set the OpenClaw startup config patch to force `openai/gpt-5.4-mini` as the default model with no
+  fallback chain.
+- Removed the stale OpenCode provider override and OpenCode model entries that exposed
+  `opencode/mimo-v2.5-free` in the default-path model set.
+- Pinned the OpenClaw Compose build args to `OPENCLAW_VERSION=2026.6.10` and
+  `OPENCLAW_CODEX_VERSION=2026.6.10`.
+- Rebuilt and restarted the live `ankit/openclaw:local` image; the running container reports
+  `openclaw@2026.6.10` and `@openclaw/codex@2026.6.10`.
+- Seeded missing isolated Codex auth homes for the `main` and `austin` OpenClaw agents from the host
+  Codex auth file.
+
+### Job Search dedicated service
+- Added a dedicated `job-search` Compose service built from `/projects/job-search` and tagged `ankit/job-search:local`.
+- Mounted the live job-search mutable directories into the container and mounted `~/.codex` for extract/fit/answers.
+- Pinned `agent-browser@0.27.1` in the image for hostile-page enrichment fallback support.
+- Added a 90-second stop grace period and healthcheck for `/api/stats`.
+- Built and started the service; a controlled restart exercised the app's SIGTERM shutdown path.
+
+### Pipeline Dagster NAS degraded-mode mounts
+- Temporarily replaced the `pipeline-dagster` `/mnt/synologydrive` bind sources for `/landing_zone` and `/aoe4-replays` with empty local placeholders under `./volumes/offline-synology/`.
+- Left the original NAS bind lines commented in `docker-compose.pipelines.yml` so the change can be reverted when the NAS returns.
+- Recreated `pipeline-dagster`; it is healthy with degraded empty landing directories.
+
 ### Bifrost Unsloth stream timeout
 - Set Unsloth's Bifrost `stream_idle_timeout_in_seconds` to 300 seconds in the config template,
   rendered local config, and live provider SQLite row.
@@ -67,6 +160,12 @@ Garmin / banking / Playnite / AoE4-replay / X-bookmarks pipelines on Dagster
 - Verified Docker Hub publishes `maximhq/bifrost:v1.6.0`; `maximhq/bifrost:latest` currently points
   to the same amd64/arm64 image manifest.
 
+### Unsloth Studio tools
+- Updated the Windows `win-models` launcher so Unsloth Studio defaults to `--disable-tools` for the
+  Bifrost/OpenCode model-server path.
+- Kept explicit opt-in available by forwarding extra Just recipe args, e.g. `--enable-tools` for
+  direct Studio UI sessions.
+- Restarted the live Windows Studio service with server-side tools disabled.
 
 ## 2026-06-26
 
@@ -308,3 +407,48 @@ Recipes: `just oc-build` / `oc-up` / `oc-logs` / `ab-logs`. Caddy routes:
 ### SillyTavern Chat Completion presets
 - Added a `just sillytavern-preset-copy` recipe to copy local Chat Completion preset JSON files into
   SillyTavern's `OpenAI Settings` user-volume directory.
+
+### SillyTavern image generation
+- Added an A1111-compatible image adapter that forwards
+  SillyTavern image requests to either Bifrost's OpenAI-compatible image-generation endpoint or
+  OpenRouter's image chat-completions endpoint.
+- Added the `sillytavern-bifrost-image` Compose service and Just recipes for starting/logging it.
+- Updated the live SillyTavern image-generation settings to use the adapter as the Stable Diffusion
+  WebUI source.
+- Switched the adapter backend through ignored runtime env and verified a real image generation.
+
+## 2026-06-22
+
+### SillyTavern ComfyUI image backend
+- Added a ComfyUI backend to the image adapter, including checkpoint/sampler/scheduler discovery and
+  a default txt2img workflow.
+- Reconfigured `sillytavern-bifrost-image` to use an external ComfyUI API configured by ignored env.
+- Added an adapter smoke test and the
+  `just sillytavern-image-adapter-test` recipe.
+- Updated the live SillyTavern image settings to use a ComfyUI model through the existing Stable
+  Diffusion WebUI source.
+- Disabled SillyTavern OpenAI media inlining in the live user settings so `/imagine me` prompt
+  generation does not send prior generated image attachments to a text-only DeepSeek/OpenRouter
+  model.
+- Added A1111-compatible no-op responses for `sd-vae`, `sd-modules`, and `latent-upscale-modes` in
+  the image adapter.
+- Increased Bifrost's OpenRouter request timeout from 120 to 600 seconds in the config template,
+  rendered config, and live provider sqlite row for long `/imagine scene` prompt-generation tests.
+- Fixed the image adapter's A1111 model switching by persisting POSTed `/sdapi/v1/options`
+  `sd_model_checkpoint` values and using the active checkpoint for `/txt2img` requests.
+- Moved the adapter's concrete runtime model values out of Compose and into ignored env/config, and
+  extended the smoke test to assert model switching sticks before generating an image.
+
+### SillyTavern ComfyUI workflows
+- Replaced the active SillyTavern ComfyUI workflow with the latest external copy.
+- Added a fixed-parameter ComfyUI workflow and set it as the active SillyTavern workflow.
+- Backed up the previous workflow and settings files under
+  `volumes/sillytavern/data/default-user/backups/`.
+- Verified the fixed workflow through the external ComfyUI API and saved a runtime smoke artifact.
+
+### SillyTavern image adapter relocation
+- Moved the adapter implementation out of devserver and into `/projects/dockers`.
+- Updated the Compose build context and Just smoke-test recipe to use the external adapter path.
+- Removed concrete image backend defaults from the adapter source and Dockerfile; runtime values now
+  come from ignored env files or live app settings.
+- Added a log ignore rule so generated smoke artifacts are not accidentally staged.

@@ -8,6 +8,210 @@ Production status, Garmin API quirks, auth/rate-limit notes, landing-zone
 contract, and pending work. Full detail:
 [`pipelines/docs/NOTES.md`](../pipelines/docs/NOTES.md).
 
+## 2026-07-01
+
+### Bifrost Unsloth provider moved behind the Windows Caddy hostname
+#### Goal
+- Route Bifrost's Unsloth traffic through the stable HTTPS Windows hostname instead of the direct Docker/LAN host address.
+#### Discovery
+- `https://unsloth.win.ankitson.com/v1/models` is reachable and returns the Unsloth model catalog when called with the existing `UNSLOTH_STUDIO_API_KEY`.
+- The tracked Bifrost config still pointed `unsloth` at `http://desktop-win:8888`.
+#### Decision
+- Changed the Bifrost `unsloth` provider `network_config.base_url` to `https://unsloth.win.ankitson.com`.
+- Changed the Unsloth provider key from `models: ["default"]` to `models: ["*"]` so Bifrost can publish the upstream model catalog instead of a single hardcoded alias.
+- Re-rendered `secrets/bifrost.config.json` from the template and force-recreated the live `bifrost` container so the mounted config and provider cache were refreshed together.
+#### Verification
+- `GET /api/providers` now reports `base_url: https://unsloth.win.ankitson.com` for provider `unsloth`.
+- A direct authenticated call to `https://unsloth.win.ankitson.com/v1/chat/completions` returned a valid completion.
+- A Bifrost-routed call to `http://127.0.0.1:8090/openai/v1/chat/completions` with model `unsloth/default` returned `UNSLOTH_CADDY_OK`.
+- `GET /openai/v1/models` now exposes the discovered Unsloth model as `unsloth/unsloth/gemma-4-26B-A4B-it-qat-GGUF`.
+- A Bifrost-routed completion to that discovered ID returned `UNSLOTH_DISCOVERY_OK`; the provider routing metadata shows the upstream model passed through as `unsloth/gemma-4-26B-A4B-it-qat-GGUF`.
+
+### Bifrost Ollama provider zero-cost pricing override
+#### Goal
+- Make locally hosted Ollama usage show up as free inside Bifrost so spend tracking does not assign synthetic token costs to self-hosted models.
+#### Discovery
+- Bifrost's pricing override system is configured under `governance.pricing_overrides`, not inside the provider block.
+- The live Bifrost model catalog exposes local Ollama models as `ollama/<model>`, and provider-scoped wildcard overrides accept `pattern: "*"` as a catch-all.
+- `docker compose up -d bifrost` did not reload the mounted config in-place; the service needed a forced recreate before the override appeared in the governance API.
+#### Decision
+- Added a provider-scoped pricing override for `provider_id: "ollama"` with `pattern: "*"` and zero `input_cost_per_token` / `output_cost_per_token`.
+- Scoped the override to `chat_completion`, `text_completion`, `responses`, and `embedding` so the common Ollama-backed request paths all resolve to zero cost.
+#### Verification
+- Re-rendered `secrets/bifrost.config.json`, force-recreated `bifrost`, and confirmed `GET /api/governance/pricing-overrides` returns the `ollama-provider-zero-cost` entry.
+
+### OpenClaw memory embeddings routed through Bifrost with passthrough extra_params
+#### Goal
+- Make OpenClaw memory embeddings use `ollama/nomic-embed-text:latest` through Bifrost while preserving the query-vs-document role signal that the Bifrost prefix shim needs.
+#### Discovery
+- OpenClaw already lets memory-search remote configs set custom headers, but the OpenAI-compatible embedding adapter sends `input_type` as a top-level JSON field.
+- Bifrost's OpenAI `/v1/embeddings` route only preserves provider-specific fields for plugins when callers use `extra_params` plus `x-bf-passthrough-extra-params: true`.
+#### Decision
+- Configured `agents.defaults.memorySearch` to use the `openai-compatible` provider against `http://bifrost:8080/openai/v1`, targeting `ollama/nomic-embed-text:latest`.
+- Enabled `x-bf-passthrough-extra-params: true` and set `queryInputType: "query"` / `documentInputType: "document"` so the Bifrost embedding shim can rewrite text prefixes before forwarding to Ollama.
+#### Verification
+- Verification is via the live OpenClaw `/v1/embeddings` route: identical text should now diverge between query and document requests when routed through Bifrost.
+
+### Bifrost embedding shim for prefix-sensitive embeddings models
+#### Goal
+- Make Bifrost compensate for embedding models that require literal task prefixes, so OpenClaw and other clients can keep using the OpenAI-compatible embeddings API.
+#### Discovery
+- `nomic-embed-text` behind Ollama does not appear to change embeddings when only `input_type` changes, but does change embeddings when the text is prefixed with `search_query:` or `search_document:`.
+- OpenClaw already sends `input_type` on embedding requests, which gives Bifrost a stable signal for query-vs-document rewriting.
+#### Decision
+- Enabled a new `embedding-task-prefix` Bifrost plugin with a rule for `ollama/nomic-embed-text*` that maps `query -> search_query: ` and `document -> search_document: `.
+- Configured the plugin to strip `input_type` after rewriting so Ollama only sees the normalized text payload.
+#### Verification
+- Verified through Bifrost that identical raw text now yields different embeddings for `input_type=query` versus `input_type=document`, which is the expected behavior for Nomic's task-prefixed format.
+
+### Bifrost Ollama provider moved behind the Caddy hostname
+#### Goal
+- Route Bifrost's Ollama traffic through the same stable HTTPS dev hostname used by the rest of the local stack.
+#### Discovery
+- The homeserver Caddy instance already fronts `*.dev.ankitson.com`, and the Bifrost container can reach
+  that hostname successfully over HTTPS from inside Docker.
+#### Decision
+- Changed `OLLAMA_URL` from `http://ollama:11434` to `https://ollama.dev.ankitson.com`.
+- Left the native Bifrost `ollama` provider in place; only the upstream URL changed.
+#### Verification
+- After re-rendering `secrets/bifrost.env` and restarting Bifrost, Ollama model discovery still returns
+  the `ollama/*` catalog and `ollama/nomic-embed-text:latest` still serves embeddings through Bifrost.
+
+### Bifrost Ollama provider for local model discovery and embeddings
+#### Goal
+- Expose the host's locally running Ollama models through the existing Bifrost gateway so clients can
+  discover them from `/openai/v1/models` and call local models such as `nomic-embed-text`.
+#### Discovery
+- The live `ollama` container is already running on the same Docker `mybridge` network as `bifrost`,
+  with hostname `ollama` and port `11434`.
+- Upstream Bifrost has a native `ollama` provider. Its config supports wildcard model discovery with a
+  per-key `ollama_key_config.url`, which is a better fit than treating Ollama as a generic custom
+  OpenAI-compatible provider.
+#### Decision
+- Added `OLLAMA_URL=http://ollama:11434` to `config/bifrost.env.tmpl`.
+- Registered a native `ollama` provider in `config/bifrost.config.json.tmpl` with `models: ["*"]`
+  and `ollama_key_config.url: env.OLLAMA_URL` so Bifrost can discover whatever models Ollama has
+  pulled locally.
+- Added `just bifrost-ollama-models` and `just bifrost-ollama-embed` to verify catalog discovery and
+  embeddings through Bifrost.
+#### Verification
+- `curl http://127.0.0.1:11434/api/tags` showed three local Ollama models before wiring:
+  `gemma4:e4b`, `qwen3.5:9b`, and `nomic-embed-text:latest`.
+- After rendering secrets and restarting Bifrost, `/openai/v1/models` exposes the `ollama/*` models
+  and `ollama/nomic-embed-text:latest` returns an embedding successfully through Bifrost.
+
+### codex-oauth reasoning-continuity bug — replaced its HTTP layer with our own proxy
+#### Symptom
+- OpenClaw agents (gilfoyle's cron loops especially) intermittently got
+  `⚠️ Agent couldn't generate a response` — the model returned neither text nor a tool call on
+  the turn immediately after a tool result, mid multi-step agentic loop. Near-100% reproducible on
+  gilfoyle's real health-watch loop (large system prompt + ~50 real tools); rare (~1-2%) on tiny
+  prompts, which is why it wasn't obvious sooner.
+#### Root cause
+- `openai-oauth` (the `codex-oauth` service's upstream npm package) translates every
+  `/v1/chat/completions` call into a fresh Vercel AI SDK `generateText()` call, fully
+  re-encoding the whole message history with zero reasoning-continuity metadata each time.
+  Reasoning models need their reasoning state threaded across a tool-call round trip or they can
+  lose track and stop dead — a real gap, not paranoia (Chat Completions has no field for it at
+  all; that's Responses-API-only).
+- The obvious server-managed fix (`store:true` + `previous_response_id`) is **not available on
+  this backend** — confirmed by direct testing, it hard-rejects `store:true` with
+  `"Store must be set to false"`. That's also why `openai-oauth`'s own `/v1/responses` handler
+  explicitly blocks `previous_response_id`/`item_reference` ("Stateless Codex responses endpoint
+  does not support..."). There is no server-side state here at all.
+- The only viable mechanism is stateless client-managed continuity: request
+  `include:["reasoning.encrypted_content"]`, capture the raw reasoning + function_call items from
+  each tool-calling turn, and splice them back into `input` verbatim on the next call instead of
+  reconstructing lossily from the Chat Completions `tool_calls` shape.
+- Extra surprise along the way: with `store:false`, the final `response.completed` SSE event's own
+  `.output` field comes back **empty** — the incremental `response.output_item.done` events are
+  the actual source of truth for output content. Cost an extra debugging pass; documented in
+  `proxy-server.mjs`'s `collectCompletedResponseFromSse`.
+#### Fix
+- Replaced `codex-oauth`'s entrypoint: it now runs
+  `projects/dockers/codex-oauth-proxy/proxy-server.mjs` (plain Node, no framework) instead of the
+  `openai-oauth` CLI's built-in HTTP server. Only reused piece from `openai-oauth`: its exported
+  `createCodexOAuthClient`/`resolveOpenAIOAuthModels` for OAuth + model discovery (deep-imported
+  from its bundled dist chunk since they aren't part of its public package exports).
+- The proxy caches each tool-calling turn's raw Responses API output items keyed by that turn's
+  `tool_call` ids (stable regardless of how a client reformats surrounding JSON), and on replay
+  splices the cached reasoning+function_call items back in for any assistant tool-call message it
+  recognizes. Cache miss (restart/TTL/unknown turn) falls back to lossy reconstruction — same
+  exposure as the original bug for that one leg, not a hard failure.
+- An earlier attempt patched `openai-oauth`'s bundled dist to flip on its unused
+  `CodexResponsesState` cache — confirmed **inert** for our traffic (it only activates on
+  Responses-API-native fields a Chat Completions client never sends) and removed; superseded by
+  the proxy rewrite above.
+#### Verification
+- `tests/test_reasoning_continuity.py` (PEP 723, `uv run`): fresh single-turn, fresh+tools,
+  small-scale 2-step tool round trip, and a gilfoyle-scale (~45KB prompt, ~50 real-sized tool
+  schemas) 2-step round trip fixture built from gilfoyle's actual workspace files. All green
+  repeatedly against the rebuilt production container.
+- Real acceptance test: `openclaw agent --agent gilfoyle --message "Run the health-watch
+  loop..."` (gilfoyle's actual cron payload) — was 100% failing (76 consecutive cron errors)
+  before the fix; now runs cleanly end-to-end through full multi-round loops (10+ tool-call
+  rounds, 100K+ token context) repeatedly, ending in the loop's correct `NO_REPLY`.
+#### Caveats
+- The Chat Completions `stream:true` case is served as a single-chunk fake SSE stream (we collect
+  the full upstream response before replying) — correct shape for callers expecting a stream, not
+  real token-level streaming.
+- Cache-miss fallback (restart, 6h TTL, or a turn from a different process) silently reverts to
+  the original lossy behavior for that one leg rather than failing hard — matches the original
+  bug's exposure, doesn't add a new failure mode.
+
+## 2026-06-30
+
+### Bifrost Privacy Suffix Aliases
+#### Goal
+- Let clients ask for privacy routing with small model suffixes instead of provider-specific JSON.
+#### Decision
+- Extended the custom `model-policy-suffix` Bifrost plugin to parse suffixes for all providers, not
+  just OpenRouter.
+- Added privacy directives: `[tee]`, `[e2ee]`, `tee=true/false`, `e2ee=true/false`, `privacy=...`,
+  and query-form `privacy.tee=true` / `privacy.e2ee=true`.
+- For OpenRouter, `[tee]` pins `provider.only=["phala"]`, disables fallbacks, and requests ZDR
+  (`zdr=true`, `data_collection=deny`). Example: `openrouter/openai/gpt-oss-20b[tee]`.
+- For Venice, `[e2ee]` maps friendly model names to known `e2ee-*` model IDs where possible. Example:
+  `venice/gpt-oss-20b[e2ee]` becomes `venice/e2ee-gpt-oss-20b-p`.
+- The plugin strips internal privacy markers before sending upstream, so `_privacy`, `tee`, and `e2ee`
+  do not leak as random provider params.
+#### Caveat
+- Bifrost can route to TEE/E2EE model IDs, but it cannot create client-side encryption. Real Venice
+  E2EE still needs a client that encrypts payloads and sends Venice's E2EE headers.
+#### Verification
+- `go test ./...` passes in `/projects/dockers/bifrost-dynamic/policy-model-suffix`.
+- Rebuilt and recreated live `bifrost` with `docker compose up -d --build bifrost`.
+- Bifrost startup logs show `model-policy-suffix - active`.
+- `just bifrost-test` returns `BIFROST_OK`.
+
+### NanoGPT Bifrost Provider
+#### Goal
+- Add NanoGPT as a Bifrost provider and make its TEE models available to clients while keeping the full
+  NanoGPT text catalog routable.
+#### Discovery
+- NanoGPT's OpenAI-compatible base is `https://nano-gpt.com/api/v1`.
+- `GET /models?detailed=true` currently returns 603 models. TEE model IDs include
+  `TEE/gpt-oss-20b`, `TEE/deepseek-v4-flash`, `TEE/minimax-m2.5`, and `TEE/kimi-k2.5`.
+- The `op://clankers/nanogpt/password` API key is readable and authenticates, but the account currently
+  has zero USD balance; a direct tiny TEE completion returned NanoGPT `402 insufficient_balance`.
+#### Decision
+- Added `NANOGPT_API_KEY` to `config/bifrost.env.tmpl`.
+- Added a `nanogpt` Bifrost custom provider with `base_provider_type: openai`, base URL
+  `https://nano-gpt.com/api`, `models: ["*"]`, model listing enabled, and chat/text/embedding request
+  support.
+#### Verification
+- Rendered `secrets/bifrost.env` and `secrets/bifrost.config.json` directly with `op inject -f`
+  because full `just rs` is currently blocked by an unrelated `config/agent-devbox.env.tmpl`
+  reference to a missing `Private` vault.
+- Recreated Bifrost with `docker compose up -d bifrost`; `just bifrost-providers` shows `nanogpt`
+  active.
+- Bifrost model discovery shows 603 NanoGPT models through the gateway.
+- Bifrost `/openai/v1/models` includes 31 `nanogpt/TEE/...` models, including
+  `nanogpt/TEE/gpt-oss-20b`, `nanogpt/TEE/deepseek-v4-flash`, `nanogpt/TEE/minimax-m2.5`, and
+  `nanogpt/TEE/kimi-k2.5`.
+- Completion smoke tests reach NanoGPT through Bifrost but currently return upstream `402` because the
+  NanoGPT account has zero USD balance.
+
 ## 2026-06-29
 
 ### Phoenix OTLP Trace Viewer
@@ -76,6 +280,62 @@ contract, and pending work. Full detail:
 3. `just up --build codex-oauth` then `just up bifrost` (env changed → recreate, not restart).
 4. Verify: `just codex-oauth-models`, `just bifrost-providers` (codex active), `just codex-oauth-test`.
 
+### OpenClaw Default Model And 2026.6.10 Upgrade
+#### Discovery
+- The tracked startup patch did not set `agents.defaults.model`, so persisted OpenClaw state controlled
+  the default model across restarts.
+- The Mimo entry came from the custom `models.providers.opencode` catalog override in
+  `volumes/openclaw/openclaw.json`; it was an OpenCode Zen model entry, not the OpenAI/Codex runtime.
+- The OpenClaw service image was still running `openclaw@2026.6.1`; Compose did not pin
+  `OPENCLAW_VERSION`, so plain rebuilds depended on the Dockerfile default or explicit Just args.
+#### Decision
+- Declare `openai/gpt-5.4-mini` as the OpenClaw default model in the rendered startup patch.
+- Remove the stale OpenCode provider override and OpenCode fallback entries from active config so Mimo
+  is not offered as an allowed default-path model.
+- Pin the OpenClaw Compose build args to `OPENCLAW_VERSION=2026.6.10` and
+  `OPENCLAW_CODEX_VERSION=2026.6.10`.
+- Seed missing isolated per-agent Codex homes from the host Codex auth file for `main` and `austin`;
+  `gilfoyle` already had one.
+#### Verification
+- `just upgrade-openclaw 2026.6.10` rebuilt `ankit/openclaw:local` and recreated the running service.
+- `openclaw --version` and global npm packages report `openclaw@2026.6.10` and
+  `@openclaw/codex@2026.6.10`.
+- `openclaw models status --json` reports default/resolved default `openai/gpt-5.4-mini`,
+  no fallbacks, and no `opencode/mimo-v2.5-free` allowed model.
+- Gateway logs show `agent model: openai/gpt-5.4-mini` and `gateway ready`.
+#### Follow-ups
+- OpenClaw doctor still reports stale `exa` and `deepseek` plugin config references.
+- A post-restart cron run hit the Codex subscription usage limit for `openai/gpt-5.4-mini`; the default
+  is correct, but the subscription is currently rate-limited.
+
+### Job Search Dedicated Docker Service
+#### Discovery
+- The job-search app was previously a child process of homeserver `app-runner`, so Docker stop/restart signals reached the runner rather than the Bun server directly.
+- That shape was a poor fit for SQLite WAL durability during host upgrades/reboots because the child process did not own a clear Docker lifecycle.
+#### Decision
+- Add a dedicated devserver Compose service `job-search` built from `/projects/job-search/Dockerfile` as image `ankit/job-search:local`.
+- Persist only the mutable repo directories as bind mounts: `state`, `profile`, `profiles`, `applications`, and `runtime`.
+- Pin `agent-browser@0.27.1` in the image so the hostile-page enrichment fallback still works.
+- Give the service `init: true`, `restart: unless-stopped`, and `stop_grace_period: 90s` so the app can checkpoint SQLite on stop.
+#### Verification
+- `docker compose -f docker-compose.yml build job-search` built the image.
+- `docker compose -f docker-compose.yml up -d --no-deps job-search` started the container and healthcheck.
+- A controlled `docker compose -f docker-compose.yml restart job-search` logged the app SIGTERM shutdown path before restart.
+- `docker exec job-search agent-browser --version` reports `agent-browser 0.27.1`.
+
+### Pipeline Dagster NAS degraded-mode mounts
+#### Discovery
+- After the Pop!_OS 24.04 upgrade, `pipeline-dagster` could not recreate while `/mnt/synologydrive` was offline.
+- Docker failed before process start while creating bind source paths for `/landing_zone` and `/aoe4-replays`.
+#### Decision
+- Temporarily replace the two NAS bind sources in `docker-compose.pipelines.yml` with empty local placeholders under `./volumes/offline-synology/`.
+- Leave the original NAS bind lines commented in the compose file for rollback.
+#### Verification
+- `docker compose -f docker-compose.pipelines.yml up -d pipeline-dagster` recreated the service.
+- `pipeline-dagster` reached healthy state with the empty placeholder landing directories.
+#### Rollback
+- When the NAS is back, restore the commented `/mnt/synologydrive/...` binds and remove the `./volumes/offline-synology/...` binds.
+
 ### Bifrost Unsloth Stream Timeout
 #### Discovery
 - Unsloth's Bifrost `default_request_timeout_in_seconds` was already 600 seconds in both the rendered
@@ -109,6 +369,21 @@ contract, and pending work. Full detail:
 - `docker compose up -d bifrost` recreated the running service; `/api/version` returns `v1.6.0`,
   `/health` returns OK, and `/api/plugins` reports `model-policy-suffix` active.
 
+### Unsloth Studio Tools
+#### Decision
+- Treat Unsloth Studio as a model server behind Bifrost/OpenCode, not as a nested agent runtime.
+- Updated the Windows `win-models` launcher so `win-models unsloth serve` defaults to
+  `--disable-tools`. The existing Just recipes pass through extra args, so direct Studio UI sessions
+  can still opt in explicitly with `--enable-tools`.
+#### Reason
+- OpenCode is already the visible tool harness. Leaving Studio server-side tools enabled created a
+  hidden second loop (`OpenCode -> Bifrost -> Studio -> terminal`) where Studio executed terminal
+  calls with `session_id=None`; OpenCode could not display or audit those calls and Bifrost timed out
+  while waiting for stream data.
+#### Verification
+- Restarted the Windows Studio service; the active process command line includes `--disable-tools`.
+- The new Studio log reports server-side tools disabled, and no `execute_tool` entries appeared after
+  restart.
 
 ## 2026-06-26
 
@@ -143,9 +418,9 @@ contract, and pending work. Full detail:
 - `opencode run` currently prints only final content in the terminal smoke test. OpenCode's TUI config
   has a `display_thinking` keybind, so use the TUI surface when you want to inspect reasoning; the
   provider/proxy stream is carrying the data either way.
-- Current `just unsloth serve-lan` launch keeps Studio server-side tools enabled (`--enable-tools`) on
-  a LAN-reachable port. Bearer auth gates access, but any client with the API key can trigger local
-  Studio tools, including terminal execution. Use `--disable-tools` for a chat-only LAN service.
+- Current `just unsloth serve-lan` launch keeps Studio server-side tools disabled by default on the
+  LAN-reachable port. Only pass `--enable-tools` for direct Studio UI sessions where Studio should be
+  the agent runtime.
 #### Verification
 - `http://desktop-win:8888/` responds with the Unsloth Studio UI from the host.
 - The local Studio OpenAPI document is reachable from inside the Bifrost container and shows
@@ -198,6 +473,15 @@ contract, and pending work. Full detail:
   with `ProviderModelNotFoundError`. A configured JSON64 example is available as
   `bifrost/openrouter/deepseek/deepseek-v4-flash[json64:eyJwcm92aWRlciI6eyJvbmx5IjpbImRpZ2l0YWxvY2VhbiJdLCJhbGxvd19mYWxsYmFja3MiOmZhbHNlfX0]`.
   Clients that call Bifrost directly can send arbitrary suffix strings without OpenCode registration.
+#### Deferred syntax decision
+- Consider making URI query syntax the primary advanced format because it is familiar and
+  percent-encoding gives a standard escape path, e.g.
+  `deepseek/deepseek-v4-flash[?provider.only=digitalocean&provider.allow_fallbacks=false]`.
+- Keep the query inside the bracket suffix rather than turning the whole model id into
+  `model?key=value`; the bracket keeps the policy layer explicit and avoids surprising clients,
+  model registries, and logs that treat model ids as opaque strings.
+- Keep raw JSON/`json64:` as escape hatches for nested objects and arrays that are awkward in query
+  strings. Revisit this before promoting the suffix format beyond local Bifrost/OpenCode usage.
 #### Verification
 - `/api/plugins` reports `model-policy-suffix` active.
 - Negative route test
@@ -210,6 +494,7 @@ contract, and pending work. Full detail:
   `provider_name: DigitalOcean`, model `deepseek/deepseek-v4-flash-20260423`, and `preset_id:null`.
 - OpenCode call
   `bifrost/openrouter/deepseek/deepseek-v4-flash[zdr,provider=digitalocean]` returned
+  `OPENCODE_SUFFIX_DO_OK`; Bifrost logs show the plugin applied the policy and stripped the suffix.
 - JSON suffix negative route test
   `openrouter/deepseek/deepseek-v4-flash[{"provider":{"only":["definitely-not-a-provider"],"allow_fallbacks":false}}]`
   returned OpenRouter 404 `No allowed providers are available`.
@@ -220,7 +505,6 @@ contract, and pending work. Full detail:
   `preset_id:null`.
 - OpenCode run with the configured JSON64 model returned `OPENCODE_JSON64_SUFFIX_OK`; Bifrost logs
   show the plugin applied the suffix and stripped the upstream model to `deepseek/deepseek-v4-flash`.
-  `OPENCODE_SUFFIX_DO_OK`; Bifrost logs show the plugin applied the policy and stripped the suffix.
 
 ### OpenCode DeepSeek v4 Pro ZDR Opt-In
 #### Status
@@ -408,7 +692,8 @@ contract, and pending work. Full detail:
 - **Reverse-proxy posture** set declaratively via compose env (`SILLYTAVERN_LISTEN=true`,
   `WHITELISTMODE=false`, `SECURITYOVERRIDE=true`) so it works on a fresh volume — `config.yaml` itself
   is in the gitignored volume. ST has no auth of its own; Caddy private_only is the gate.
-- **Pointed at Bifrost**: pre-seeded `data/default-user/settings.json` →
+- **Pointed at Bifrost**: pre-seeded `data/default-user/settings.json` → `main_api=openai` (stock
+  default is `koboldhorde`/AI Horde — this is what makes Bifrost the *default* backend),
   `oai_settings.chat_completion_source=custom`, `custom_url=http://bifrost:8080/openai/v1`,
   `custom_model=nvidia/meta/llama-3.1-8b-instruct` (+ placeholder `api_key_custom` in secrets.json;
   Bifrost is keyless). ST proxies the API call server-side, so the internal `bifrost:8080` hostname
@@ -418,10 +703,8 @@ contract, and pending work. Full detail:
   `openrouter/...`, `nvidia/...`, `deepseek/deepseek-chat`).
 
 ### Follow-ups (2026-06-20): Caddy, DeepSeek-direct, fastmail
-- **Caddy**: Web UI + API now at **https://bifrost.dev.ankitson.com** (private_only / LAN+Tailscale).
-  Route added to `homeserver:volumes/caddy/dev.Caddyfile` (`reverse_proxy bifrost:8080`; Caddy is on
-  mybridge so it resolves the container by name) and reloaded live. **That edit is in the homeserver
-  repo and is currently uncommitted there.**
+- **Caddy**: Web UI + API were added behind the private reverse-proxy path. The concrete route lives
+  in the homeserver repo and should stay out of devserver notes.
 - **DeepSeek can't be BYOK'd through OpenRouter** — OpenRouter has **no DeepSeek-direct endpoint** for
   any deepseek slug (`only:["deepseek"]` 404s with `available_providers: [streamlake, deepinfra, novita]`;
   all the deepseek models on OR are served by third parties). Mistral BYOK *does* work (verified direct:
@@ -612,3 +895,60 @@ contract, and pending work. Full detail:
   `volumes/sillytavern/data/default-user/OpenAI Settings/`.
 - **Helper**: added `just sillytavern-preset-copy path/to/preset.json` as a thin wrapper around that
   direct copy. Actual preset exports are user data and should not be tracked in this repo.
+
+## 2026-06-20 - SillyTavern image generation through Bifrost
+- **Finding**: SillyTavern's built-in OpenAI and OpenRouter image sources are hardcoded to the public
+  provider APIs, so they cannot be pointed at Bifrost with settings alone. Its Stable Diffusion WebUI
+  source is URL-configurable.
+- **Adapter**: added `sillytavern-bifrost-image`, a small A1111-compatible service that exposes
+  `/sdapi/v1/*` to SillyTavern. It can forward to Bifrost's OpenAI-compatible image endpoint or to
+  OpenRouter's image chat-completions endpoint.
+- **SillyTavern settings**: the adapter is selected through SillyTavern's configurable Stable
+  Diffusion WebUI source. Concrete URLs, model choices, and model lists belong in ignored secrets or
+  live SillyTavern data.
+- **2026-06-22 update**: switched the adapter backend for testing with provider credentials loaded
+  from ignored secret files. Direct provider routing avoided incompatible chat-tool injection.
+- **2026-06-22 model switch**: model choices were moved into ignored runtime env/config rather than
+  tracked repo files.
+- **Verification**: SillyTavern can reach the adapter health/options/model endpoints. A real `txt2img`
+  request returned HTTP 200 and wrote a valid smoke image under runtime output storage.
+
+## 2026-06-22 - SillyTavern image generation through external ComfyUI
+- **Finding**: the external ComfyUI endpoint is reachable from devserver. The concrete endpoint and
+  model inventory belong in ignored env/config, not tracked notes.
+- **Adapter update**: extended `sillytavern-bifrost-image` with `IMAGE_BACKEND=comfyui`. It exposes
+  the same A1111-shaped `/sdapi/v1/txt2img` interface and translates requests into a simple ComfyUI
+  checkpoint → CLIP encode → KSampler → VAE decode → SaveImage workflow.
+- **Runtime config**: concrete endpoint, model, sampler, and scheduler values are loaded from
+  ignored env files or SillyTavern's live user settings.
+- **Verification**: direct ComfyUI API generation and adapter generation both succeeded during setup.
+- **2026-06-22 `/imagine me` fix**: SillyTavern's prompt-generation step for `/imagine me` failed
+  when the current chat contained a generated image attachment because `oai_settings.media_inlining`
+  was true and the active DeepSeek/OpenRouter chat model does not support image input. Set
+  `media_inlining=false`, restarted SillyTavern, and kept ComfyUI image generation unchanged.
+  Also added no-op A1111 metadata endpoints for `sd-vae`, `sd-modules`, and `latent-upscale-modes`
+  to avoid harmless SillyTavern probe 404s.
+- **2026-06-22 timeout test**: `/imagine scene` can stall before ComfyUI because SillyTavern first
+  asks the main chat model to convert the scene into image tags. Increased Bifrost's provider
+  request timeout in rendered config and live state, then restarted Bifrost.
+- **2026-06-22 model switch fix**: SillyTavern changes Stable Diffusion WebUI checkpoints by POSTing
+  `sd_model_checkpoint` to `/sdapi/v1/options`; the adapter previously returned success but ignored
+  that state, so `/txt2img` fell back to its default model. The adapter now stores the current
+  checkpoint, reports it from GET `/options`, and uses it for generation when no per-request model
+  override is present. Compose no longer stores concrete model defaults.
+
+## 2026-06-22 - SillyTavern ComfyUI workflows
+- **Goal**: copy external ComfyUI API workflows into SillyTavern's live workflow directory.
+- **Installed files**: workflow JSON files were copied into live SillyTavern user data. Concrete
+  workflow names and source endpoints should stay in ignored runtime data, not tracked notes.
+- **Active workflow**: SillyTavern image generation was pointed at the copied ComfyUI workflow with
+  prompt expansion disabled.
+- **Verification**: the active workflow was submitted directly to ComfyUI and returned a valid image.
+
+## 2026-06-23 - SillyTavern image adapter privacy cleanup
+- **Goal**: keep the adapter implementation in the shared Docker image project and keep concrete
+  image backend settings out of tracked devserver files.
+- **Move**: the adapter build context now points at `/projects/dockers`; devserver only keeps the
+  Compose service wiring and ignored env-file reference.
+- **Privacy rule**: concrete image model IDs, ComfyUI workflow filenames, private endpoint names, and
+  private network addresses belong in ignored secrets or live app data, not tracked repo files.
