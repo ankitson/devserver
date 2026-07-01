@@ -302,6 +302,8 @@ services:
       dockerfile: Dockerfile
       args:
         DEVBOX_TAG: "latest"         # ankit/devbox:latest (currently aliases 1.5)
+        OPENCLAW_VERSION: "2026.6.11"
+        OPENCLAW_CODEX_VERSION: "2026.6.11"
     image: ankit/openclaw:local
     container_name: openclaw
     hostname: openclaw
