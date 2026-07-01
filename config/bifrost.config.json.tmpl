@@ -44,12 +44,47 @@
     ]
   },
 
+  "governance": {
+    "pricing_overrides": [
+      {
+        "id": "ollama-provider-zero-cost",
+        "name": "Ollama Provider Zero Cost",
+        "scope_kind": "provider",
+        "provider_id": "ollama",
+        "match_type": "wildcard",
+        "pattern": "*",
+        "request_types": ["chat_completion", "text_completion", "responses", "embedding"],
+        "pricing_patch": "{\"input_cost_per_token\":0,\"output_cost_per_token\":0}"
+      }
+    ]
+  },
+
   "plugins": [
     {
       "enabled": true,
       "name": "model-policy-suffix",
       "path": "/app/plugins/model-policy-suffix.so",
       "version": 1
+    },
+    {
+      "enabled": true,
+      "name": "embedding-task-prefix",
+      "path": "/app/plugins/embedding-task-prefix.so",
+      "version": 1,
+      "config": {
+        "strip_input_type": true,
+        "rules": [
+          {
+            "name": "ollama-nomic-embed-text",
+            "provider": "ollama",
+            "model_prefix": "nomic-embed-text",
+            "prefixes": {
+              "query": "search_query: ",
+              "document": "search_document: "
+            }
+          }
+        ]
+      }
     }
   ],
 
@@ -65,11 +100,7 @@
       ],
       "network_config": {
         "base_url": "https://openrouter.ai/api",
-        "default_request_timeout_in_seconds": 120,
-        "extra_headers": {
-          "HTTP-Referer": "https://dev.ankitson.com",
-          "X-Title": "bifrost-devserver"
-        }
+        "default_request_timeout_in_seconds": 600
       }
     },
 
@@ -132,6 +163,7 @@
             "nvidia/llama-3.1-nemotron-nano-8b-v1",
             "nvidia/nvidia-nemotron-nano-9b-v2",
             "nvidia/llama-3.3-nemotron-super-49b-v1.5",
+            "nvidia/nemotron-3-ultra-550b-a55b",
             "mistralai/mistral-small-4-119b-2603"
           ],
           "weight": 1.0
@@ -173,6 +205,33 @@
       }
     },
 
+    "nanogpt": {
+      "keys": [
+        {
+          "name": "nanogpt-key-1",
+          "value": "env.NANOGPT_API_KEY",
+          "models": ["*"],
+          "weight": 1.0
+        }
+      ],
+      "network_config": {
+        "base_url": "https://nano-gpt.com/api",
+        "default_request_timeout_in_seconds": 600,
+        "stream_idle_timeout_in_seconds": 300
+      },
+      "custom_provider_config": {
+        "base_provider_type": "openai",
+        "allowed_requests": {
+          "list_models": true,
+          "chat_completion": true,
+          "chat_completion_stream": true,
+          "text_completion": true,
+          "text_completion_stream": true,
+          "embedding": true
+        }
+      }
+    },
+
     "unsloth": {
       "keys": [
         {
@@ -200,6 +259,24 @@
           "responses_stream": true,
           "embedding": true
         }
+      }
+    },
+
+    "ollama": {
+      "keys": [
+        {
+          "name": "ollama-local",
+          "value": "",
+          "models": ["*"],
+          "weight": 1.0,
+          "ollama_key_config": {
+            "url": "env.OLLAMA_URL"
+          }
+        }
+      ],
+      "network_config": {
+        "allow_private_network": true,
+        "default_request_timeout_in_seconds": 120
       }
     },
 
