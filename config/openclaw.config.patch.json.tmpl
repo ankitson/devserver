@@ -18,7 +18,7 @@
       },
       "memorySearch": {
         "provider": "openai-compatible",
-        "model": "ollama/nomic-embed-text:latest",
+        "model": "unsloth/Qwen/Qwen3-Embedding-8B-GGUF",
         "queryInputType": "query",
         "documentInputType": "document",
         "fallback": "none",
@@ -30,7 +30,8 @@
         }
       },
       "models": {
-        "bifrost/openai/gpt-5.4-mini": {},
+        "bifrost/codex/gpt-5.3-codex-spark": {},
+        "bifrost/codex/gpt-5.4-mini": {},
         "bifrost/codex/gpt-5.5": {},
         "bifrost/codex/gpt-5.4": {},
         "bifrost/deepseek/deepseek-v4-flash": {},
@@ -44,6 +45,15 @@
       { "id": "gilfoyle", "name": "gilfoyle", "workspace": "/cybernetics/agents/gilfoyle", "thinkingDefault": "medium" },
       { "id": "austin", "name": "austin", "workspace": "/cybernetics/agents/austin", "thinkingDefault": "medium" }
     ]
+  },
+  "tools": {
+    "sessions": {
+      "visibility": "all"
+    },
+    "agentToAgent": {
+      "enabled": true,
+      "allow": ["main", "gilfoyle", "austin"]
+    }
   },
   "bindings": [
     { "match": { "channel": "discord", "peer": { "kind": "channel", "id": "1513643336161034402" } }, "agentId": "gilfoyle" },
@@ -77,7 +87,8 @@
         "api": "openai-completions",
         "contextWindow": 200000,
         "models": [
-          { "id": "openai/gpt-5.4-mini", "name": "Bifrost · gpt-5.4-mini (OpenAI API key)" },
+          { "id": "codex/gpt-5.3-codex-spark", "name": "Bifrost · gpt-5.3-codex-spark (ChatGPT sub)", "reasoning": true },
+          { "id": "codex/gpt-5.4-mini", "name": "Bifrost · gpt-5.4-mini (ChatGPT sub)", "reasoning": true },
           { "id": "codex/gpt-5.5", "name": "Bifrost · gpt-5.5 (ChatGPT sub)", "reasoning": true },
           { "id": "codex/gpt-5.4", "name": "Bifrost · gpt-5.4 (ChatGPT sub)", "reasoning": true },
           { "id": "deepseek/deepseek-v4-flash", "name": "Bifrost · DeepSeek V4 Flash" },
