@@ -1,38 +1,4 @@
 services:
-  # ── LiteLLM Gateway ─────────────────────────────────────────────
-  litellm:
-    image: ghcr.io/berriai/litellm:main-latest
-    restart: unless-stopped
-    depends_on:
-      litellm-db:
-        condition: service_healthy
-    env_file:
-      - ./secrets/litellm.env
-    volumes:
-      - ./config/litellm.yaml:/app/config.yaml:ro
-    ports:
-      - "${LITELLM_PORT:-4000}:4000"
-    command:
-      [
-        "--config", "/app/config.yaml",
-        "--port", "4000",
-        "--detailed_debug",
-      ]
-  litellm-db:
-    image: postgres:16-alpine
-    container_name: litellm-db
-    restart: unless-stopped
-    env_file:
-      - ./config/litellm-db.env
-      - ./secrets/litellm.env
-    volumes:
-      - litellm_pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD", "pg_isready", "-U", "litellm"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
   # ── Bifrost LLM Gateway ─────────────────────────────────────────
   # Go-based OpenAI/Anthropic-compatible gateway (maximhq/bifrost). Lives on
   # mybridge; other services reach it at http://bifrost:8080. Provider API keys
@@ -493,7 +459,6 @@ services:
               count: 1
               capabilities: [gpu]
 volumes:
-  litellm_pgdata:
   mcpproxy_data:
   agent_devbox_home:
   agent_sandbox_home:

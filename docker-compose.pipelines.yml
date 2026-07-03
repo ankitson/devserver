@@ -1,21 +1,4 @@
 services:
-  # Shared mock bank — single instance, all 3 pipelines hit it.
-  mock-bank:
-    build:
-      context: ./pipelines/mock-bank
-      dockerfile: Dockerfile
-    container_name: mock-bank
-    restart: unless-stopped
-    networks: [default]
-    environment:
-      PORT: "8000"
-    healthcheck:
-      test: ["CMD-SHELL", "python -c 'import urllib.request,sys;urllib.request.urlopen(\"http://localhost:8000/healthz\",timeout=2).read()'"]
-      interval: 10s
-      timeout: 3s
-      retries: 5
-      start_period: 5s
-
   # Restate server — Rust binary, embedded RocksDB.
   restate-server:
     image: docker.restate.dev/restatedev/restate:latest
