@@ -51,24 +51,25 @@ build *args:
   {{COMPOSE}} build {{args}}
 
 # Pull latest image(s) and recreate. --no-deps keeps dependent services running.
-# Use this for services with `image:` only. For locally-built services (see
-# `upgrade-openclaw` below) the source dependency must be bumped first.
+# Use this for registry-backed services with `image:` only.
 upgrade *services:
   {{COMPOSE}} pull {{services}}
   {{COMPOSE}} up -d --no-deps {{services}}
 
 # Upgrade openclaw (locally-built; build context = ankitson/dockers git repo).
-# Resolves the npm version to install (default: latest), passes it as a build
-# arg, rebuilds, and recreates. The Dockerfile defaults to OPENCLAW_VERSION=
-# latest, so no source pin to bump unless you pass a specific version here
-# (useful for rollback: `just upgrade-openclaw 2026.5.25`).
+# Rebuilds with npm latest by default. Pass a version only for rollback:
+# `just upgrade-openclaw 2026.5.25`.
 upgrade-openclaw version="":
   #!/usr/bin/env bash
   set -euo pipefail
   V="{{version}}"
-  [ -z "$V" ] && V=$(npm view openclaw version)
-  echo "openclaw: building with openclaw@$V"
-  {{COMPOSE}} build --build-arg OPENCLAW_VERSION="$V" openclaw
+  if [ -z "$V" ]; then
+    echo "openclaw: building with npm latest"
+    {{COMPOSE}} build --pull --no-cache openclaw
+  else
+    echo "openclaw: building with openclaw@$V"
+    {{COMPOSE}} build --pull --no-cache --build-arg OPENCLAW_VERSION="$V" --build-arg OPENCLAW_CODEX_VERSION="$V" openclaw
+  fi
   {{COMPOSE}} up -d --no-deps openclaw
   echo
   docker exec openclaw bash -lc 'openclaw --version' 2>/dev/null | grep -v "Agent mode" | head -1 || true
