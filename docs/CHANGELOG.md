@@ -8,6 +8,109 @@ Garmin / banking / Playnite / AoE4-replay / X-bookmarks pipelines on Dagster
 (+ DBOS / Restate experiments). Full detail:
 [`pipelines/docs/CHANGELOG.md`](../pipelines/docs/CHANGELOG.md).
 
+## 2026-07-09
+
+### AgentsView: pull opencode sessions from Windows
+- Added `opencode` to `REMOTE_SOURCES` for `desktop-win` at `C:\Users\ankit\.local\share\opencode`.
+- Added `"opencode": "OPENCODE_DIR"` to `AGENT_ENV` mapping so the sync container knows which env var to set.
+- Updated default `--agents` to `"codex,claude,opencode"` so the scheduler picks up opencode automatically.
+- Pulled and synced 12 existing opencode sessions from desktop-win (4 from July 9, 5 from July 8).
+
+### Open WebUI: add voice-chat UI wired to Bifrost and MCPProxy
+- Added the `open-webui` Compose service (`ghcr.io/open-webui/open-webui:main`) on `mybridge`, reachable at `https://chat.home.ankitson.com`.
+- Routed chat, STT (`speaches/deepdml/faster-whisper-large-v3-turbo-ct2`), TTS (`speaches/speaches-ai/Kokoro-82M-v1.0-ONNX`), embeddings (`ollama/nomic-embed-text`), and image generation through the single Bifrost gateway VK.
+- Wired MCPProxy as an external tool server via `scripts/open-webui-entrypoint.sh`, which seeds `TOOL_SERVER_CONNECTIONS` before the Python app starts (mirrors the `unsloth-studio-entrypoint.sh` pattern).
+- Enabled SearXNG web search, memories, folders, notes, channels, calendar, and automations; forced `ENABLE_PERSISTENT_CONFIG=false` so env vars always win over the WebUI database.
+- Documented the full env var surface in `docs/open-webui.md`.
+
+### Open WebUI: remediate chat-hang bug
+- Root-caused hanging assistant messages (`chat_message.done=0`, `output=null`) to Open WebUI's `stream_body_handler` not breaking out of its `async for` loop after seeing `data: [DONE]` inside an `except` branch; fix lives in the custom image's `session_pool.py` in a separate repo.
+- Added `scripts/fix-hanging-chats.py` to mark stuck `chat_message` rows as done directly in the SQLite DB, unsticking affected chats without a restart.
+
+## 2026-07-08
+
+### Audio: add audiocpp ggml engine and Nemotron ASR to Bifrost
+- Added the `audiocpp` Compose service, a native ggml audio engine (TTS + STT) built from `/projects/external-repo/audio.cpp` via its own CUDA Dockerfile, exposing an OpenAI-compatible surface (`/v1/audio/speech`, `/v1/audio/transcriptions`, `/v1/models`, `/v1/audio/voices`).
+- Added the `nemotron-asr` Compose service, a thin FastAPI shim around NVIDIA NeMo's `nvidia/nemotron-3.5-asr-streaming-0.6b` model, serving OpenAI-compatible `/v1/audio/transcriptions` (audio.cpp has no Nemotron support).
+- Registered both as custom Bifrost providers (`base_provider_type: openai`) with `list_models: true`, alongside the existing `speaches` engine; both share the 2070 SUPER GPU and the host-path HF cache, so expect VRAM pressure under concurrent load.
+- Added `config/audiocpp.json.tmpl`, rendered to `secrets/audiocpp.json` by `just rs`.
+
+### Unsloth Studio: add patched web UI service
+- Added the `unsloth-studio` Compose service, a UI/proxy instance backed by the patched source checkout at `/projects/code/unsloth`; Bifrost still routes the actual model calls to the Windows Unsloth backend.
+- Pointed it at Bifrost (`UNSLOTH_BIFROST_BASE_URL`) and MCPProxy (`UNSLOTH_MCP_PROXY_URL`) via `scripts/unsloth-studio-entrypoint.sh` and `config/unsloth-bifrost.env.tmpl`.
+
+### Bifrost: add opencode-zen provider, widen model wildcards
+- Added an `opencode-zen` Bifrost provider keyed by `OPENCODE_ZEN_API_KEY`.
+- Simplified the `nvidia-build-key` model list to a `["*"]` wildcard instead of an explicit per-model allowlist.
+- Enabled `list_models: true` on the custom `openai`, `speaches`, `audiocpp`, and `nemotron-asr` providers so they all report models via `/v1/models`.
+
+## 2026-07-06
+
+### Bifrost: skip slow providers during model list
+- Updated the custom Bifrost image to upstream `transports/v1.6.2`.
+- Patched all-provider model listing to return partial results after a 10-second collection window instead of waiting on a down provider.
+- Added provider status metadata to `/v1/models` and OpenAI-compatible `/openai/v1/models` without removing the normal model list data contract.
+- Rebuilt and restarted `bifrost`; both model-list routes now return HTTP 200 in about 10 seconds with `unsloth` reported as timed out.
+
+## 2026-07-05
+
+### Bifrost: route MCPProxy through retrieval endpoint
+- Changed the Bifrost `mcpproxy` MCP client from `http://172.19.0.1:3130/mcp/all` to `http://172.19.0.1:3130/mcp`.
+- Disabled `allow_on_all_virtual_keys` and enabled `mcp_disable_auto_tool_inject` so MCP tools are not injected by default.
+- Removed the temporary `mcp-inject` virtual key.
+- Created `unsloth-win`, `openclaw`, `dev`, and `azimuth` Bifrost virtual keys, stored their values in `op://clankers/bifrost-vks/`, and bound each to the `mcpproxy` MCP client.
+- Restarted `mcpproxy` and verified Bifrost now sees 10 retrieval-mode mcpproxy tools instead of the 54 direct tools.
+- Documented the client contract: omit MCP include headers to opt out; use `x-bf-mcp-include-clients: mcpproxy` or `x-bf-mcp-include-tools: ...` to opt in per request.
+
+### OpenClaw: use dedicated Bifrost virtual key
+- Pointed the OpenClaw Bifrost provider at `op://clankers/bifrost-vks/openclaw` in the startup patch template and rendered secret patch.
+- Preserved the existing `openai/gpt-5.4-mini` Bifrost model entry in the startup patch so OpenClaw's non-replacing config patch can apply cleanly.
+- Restarted the existing `openclaw` container and verified the gateway is ready with the Bifrost provider key redacted and 10 configured Bifrost models.
+
+### OpenClaw: disable bundled MCP for Emo
+- Added `tools.deny: ["bundle-mcp"]` to the `emo` agent in the OpenClaw startup patch and live config.
+- Restarted the `openclaw` container so Discord and the gateway loaded the updated Emo tool policy.
+
+### OpenClaw: restrict Emo to messaging tools and selected skills
+- Set the `emo` agent to `tools.profile: "messaging"` in the OpenClaw startup patch and live config.
+- Replaced the `emo` skill allowlist with `["todoist", "webby"]`, removing `x-research` from Emo's visible skills.
+- Restarted the `openclaw` container so Discord and the gateway loaded the new agent config.
+
+### OpenClaw: set Bifrost provider timeout to 10 minutes
+- Added `timeoutSeconds: 600` to the OpenClaw `bifrost` provider config in the startup patch template and rendered patch.
+- Applied the same validated config patch to the mounted live OpenClaw config without restarting the gateway.
+
+### OpenClaw: add Emo agent route
+- Added the `emo` OpenClaw agent to the startup config patch with workspace `/cybernetics/agents/emo`, model `bifrost/unsloth/current`, and `thinkingDefault: "high"`.
+- Added `emo` to agent-to-agent visibility, the Bifrost model allowlist, and the Discord binding for channel `1523459169867399248`.
+- Scaffolded a blank Emo workspace template in the cybernetics vault.
+
+### MinIO: add local S3-compatible download bucket
+- Added a `minio` Compose service backed by `/mnt/store-ext4/minio`, with the S3 API on `127.0.0.1:39000` and console on `127.0.0.1:39001`.
+- Added a `minio-init` one-shot service that creates the `files` bucket and grants anonymous download access.
+- Added `config/minio.env.tmpl` so MinIO root credentials render from the 1Password `clankers/local-service` username and password fields.
+- Configured advertised MinIO URLs for `https://minio.dev.ankitson.com` and `https://minio-console.dev.ankitson.com`.
+- Added Just recipes for starting MinIO, printing client env vars, uploading a file, following logs, and smoke-testing public downloads.
+- Documented endpoint, console, bucket name, and example AWS-compatible client usage in the README.
+
+### OpenClaw: disable session-store cache for Discord `/new`
+- Added `OPENCLAW_SESSION_CACHE_TTL_MS=0` to the OpenClaw Compose service so reply session initialization reads the live session store instead of a potentially divergent in-process cache.
+- Cleared the stuck Discord `#general` channel session row after backing up `sessions.json`; preserved the old transcript file.
+- Recreated the `openclaw` container and verified Discord is connected, config is valid, and there are no active `main` sessions before a fresh `/new` test.
+
+### MCPProxy: add Todoist upstream
+- Added `TODOIST_API_KEY` to the MCPProxy env template, rendered from `op://clankers/todoist-azimuth-agents/api-token`.
+- Added a pinned `todoist` stdio upstream in `config/mcpproxy.seed.json` using `npx -y @doist/todoist-mcp@10.4.1`.
+- Added and approved the live Todoist upstream in MCPProxy; it exposes 50 Todoist tools and now uses the Azimuth agents Todoist token.
+- Verified the Azimuth agents token sees 5 projects and can create tasks in each visible project.
+- Documented that native project/workspace scoping is not available through Todoist OAuth, the official Todoist MCP server, or MCPProxy token policy.
+
+### AgentsView: ingest OpenClaw and remote-machine transcripts
+- Added the OpenClaw agents session directory to the AgentsView container with `OPENCLAW_DIR=/agents/openclaw`.
+- Added a read-only `/agent-sources` mount backed by `volumes/agentsview-sources` for mirrored remote-machine transcripts.
+- Added `bin/agentsview-sync-sources.py`, which pulls Codex and Claude transcripts from configured remote machines, runs scoped AgentsView syncs, backs up `sessions.db`, and updates imported rows so the `machine` column reflects the source host.
+- Added `just agentsview-sync` as the repeatable local entry point for manual or scheduled remote transcript syncs.
+
 ## 2026-07-01
 
 ### Bifrost: move Unsloth provider to the Windows Caddy hostname
