@@ -14,3 +14,8 @@ logs/*
 __pycache__/
 *.pyc
 .venv/
+
+# Generated upgrade plan
+docker-upgrade-plan.json
+docker-build-plan.json
+docker-upgrade-build-plans/

@@ -311,14 +311,6 @@ bifrost-test-search model="nvidia/meta/llama-3.1-8b-instruct" *query="What is th
     -d '{"model":"{{model}}","messages":[{"role":"user","content":"Use the web_search tool, then: {{query}}"}],"max_tokens":400}' \
     | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d["choices"][0]["message"].get("content") if d.get("choices") else "ERR "+json.dumps(d.get("error",{})))'
 
-# Wipe Bifrost runtime state (config.db + logs.db). Forces a clean re-seed from
-# config/bifrost.config.json on next start. Does NOT touch the config file itself.
-bifrost-reset:
-  {{COMPOSE}} stop bifrost
-  rm -rf ./volumes/bifrost/*.db ./volumes/bifrost/*.db-*
-  {{COMPOSE}} up -d bifrost
-  @echo "bifrost reset — re-seeded from config/bifrost.config.json"
-
 # ── MCPProxy shared MCP gateway ─────────────────────────────────────
 # Keep the Compose project name stable when running from an isolated worktree.
 mcpproxy-up:
