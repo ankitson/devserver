@@ -343,6 +343,8 @@ services:
     # just the gateway shell that the entrypoint sources from the bind-mount.
     env_file:
       - ./secrets/openclaw.env
+    environment:
+      - OPENCLAW_SESSION_CACHE_TTL_MS=0
     volumes:
       - ./volumes/openclaw:/home/ankit/.openclaw            # restored live state (gitignored)
       - ./secrets/openclaw.env:/run/openclaw/openclaw.env:ro
