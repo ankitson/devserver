@@ -118,6 +118,17 @@
       ]
     },
 
+    "opencode-zen": {
+      "keys": [
+        {
+          "name": "opencode-zen-key-1",
+          "value": "env.OPENCODE_ZEN_API_KEY",
+          "models": ["*"],
+          "weight": 1.0
+        }
+      ]
+    },
+
     "openai": {
       "keys": [
         {
@@ -161,14 +172,7 @@
         {
           "name": "nvidia-build-key-1",
           "value": "env.NVIDIA_API_KEY",
-          "models": [
-            "meta/llama-3.1-8b-instruct",
-            "nvidia/llama-3.1-nemotron-nano-8b-v1",
-            "nvidia/nvidia-nemotron-nano-9b-v2",
-            "nvidia/llama-3.3-nemotron-super-49b-v1.5",
-            "nvidia/nemotron-3-ultra-550b-a55b",
-            "mistralai/mistral-small-4-119b-2603"
-          ],
+          "models": ["*"],
           "weight": 1.0
         }
       ],
@@ -179,6 +183,7 @@
       "custom_provider_config": {
         "base_provider_type": "openai",
         "allowed_requests": {
+          "list_models": true,
           "chat_completion": true,
           "chat_completion_stream": true,
           "embedding": true
@@ -202,6 +207,7 @@
       "custom_provider_config": {
         "base_provider_type": "openai",
         "allowed_requests": {
+          "list_models": true,
           "chat_completion": true,
           "chat_completion_stream": true
         }
@@ -288,7 +294,7 @@
         {
           "name": "speaches-noauth",
           "value": "env.SPEACHES_API_KEY",
-          "models": ["deepdml/faster-whisper-large-v3-turbo-ct2"],
+          "models": ["*"],
           "weight": 1.0
         }
       ],
@@ -300,6 +306,7 @@
       "custom_provider_config": {
         "base_provider_type": "openai",
         "allowed_requests": {
+          "list_models": true,
           "transcription": true,
           "transcription_stream": true,
           "speech": true
