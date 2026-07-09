@@ -507,6 +507,51 @@ services:
     ports:
       - "127.0.0.1:${UNSLOTH_STUDIO_PORT:-8892}:8892"
 
+  # ── audiocpp: native ggml audio engine (TTS + STT), OpenAI-compatible ───────
+  # audio.cpp HTTP server exposing /v1/audio/speech (TTS) and /v1/audio/transcriptions
+  # (STT), plus /v1/models and /v1/audio/voices. Same OpenAI surface as `speaches`, so
+  # Bifrost registers it as a second `audiocpp` provider (base_provider_type openai).
+  # Built straight from the repo checkout (/projects/.../audio.cpp) using its own
+  # .devops/cuda.Dockerfile; the .tmpl server config is rendered to secrets/audiocpp.json
+  # by `just rs`. Shares the 2070 SUPER with speaches — see WHISPER__TTL note there;
+  # both engines can be hot at once, so expect VRAM pressure under concurrent load.
+  # Internal-only (no LAN port) — reached via mybridge as http://audiocpp:8080.
+  audiocpp:
+    build:
+      context: /projects/external-repo/audio.cpp
+      dockerfile: .devops/cuda.Dockerfile
+    image: ankit/audiocpp:latest
+    container_name: audiocpp
+    hostname: audiocpp
+    restart: unless-stopped
+    command: ["server", "--config", "/server.json"]
+    volumes:
+      - ./secrets/audiocpp.json:/server.json:ro        # rendered from config/audiocpp.json.tmpl by `just rs`
+      - /mnt/store-ext4/models/audiocpp:/models:rw       # model weights (Qwen3-ASR, TTS, etc.)
+      - /mnt/store-ext4/models/hf-cache:/home/ubuntu/.cache/huggingface
+      # Silero VAD is a bundled framework asset (not a downloadable package); mount it read-only.
+      - /projects/external-repo/audio.cpp/assets/framework/models/silero_vad:/models/silero_vad:ro
+      # Default voice-clone reference for zero-config TTS (OpenAI speech clients only send `input`).
+      - /projects/external-repo/audio.cpp/assets/resources/sample.wav:/models/voice_ref.wav:ro
+    ports:
+      - "127.0.0.1:${AUDIOCPP_PORT:-8801}:8080"         # local debug only; service-to-service via hostname
+    shm_size: 1g
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - mybridge
+
   # ── Speaches: faster-whisper STT server, OpenAI-compatible /v1/audio/transcriptions ─
   # Internal-only (no LAN port) — reached via mybridge from openclaw / hermes / litellm.
   # Default WHISPER__MODEL is what `model=""` requests resolve to; clients can override

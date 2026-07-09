@@ -1,0 +1,72 @@
+{
+  "host": "0.0.0.0",
+  "port": 8080,
+  "device": 0,
+  "threads": 1,
+  "backend": "cuda",
+  "lazy_load": true,
+  "models": [
+    {
+      "id": "qwen3-asr",
+      "family": "qwen3_asr",
+      "path": "/models/Qwen3-ASR-0.6B",
+      "task": "asr",
+      "mode": "offline"
+    },
+    {
+      "id": "qwen3-tts",
+      "family": "qwen3_tts",
+      "path": "/models/Qwen3-TTS-12Hz-0.6B-Base",
+      "task": "tts",
+      "mode": "offline",
+      "voice_presets": {
+        "alloy": {
+          "voice_ref": "/models/voice_ref.wav",
+          "reference_text": "Some call me nature. Others call me Mother Nature."
+        },
+        "default": {
+          "voice_ref": "/models/voice_ref.wav",
+          "reference_text": "Some call me nature. Others call me Mother Nature."
+        }
+      },
+      "default_voice_preset": "alloy"
+    },
+    {
+      "id": "chatterbox",
+      "family": "chatterbox",
+      "path": "/models/chatterbox",
+      "task": "clon",
+      "mode": "offline",
+      "voice_presets": {
+        "default": { "voice_ref": "/models/voice_ref.wav" }
+      },
+      "default_voice_preset": "default"
+    },
+    {
+      "id": "pocket-tts",
+      "family": "pocket_tts",
+      "path": "/models/pocket-tts",
+      "task": "tts",
+      "mode": "offline",
+      "lazy": true,
+      "load_options": {
+        "language": "english"
+      },
+      "session_options": {
+        "language": "english"
+      },
+      "voice_presets": {
+        "alloy": { "voice_id": "alba" },
+        "default": { "voice_id": "alba" }
+      },
+      "default_voice_preset": "alloy"
+    },
+    {
+      "id": "silero-vad",
+      "family": "silero_vad",
+      "path": "/models/silero_vad",
+      "task": "vad",
+      "mode": "offline"
+    }
+  ]
+}
