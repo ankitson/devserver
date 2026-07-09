@@ -125,6 +125,83 @@ phoenix-smoke:
 phoenix-post-autosweep-latest:
   cd {{AUTOSWEEP_SPIKE}}/pydantic && uv run export_otlp_traces.py --latest-postcap-batch --post-url {{PHOENIX_URL}}/v1/traces
 
+# ── MinIO S3-compatible object store ───────────────────────────────
+MINIO_SECRET_ENV := "./secrets/minio.env"
+MINIO_ENDPOINT := env('MINIO_ENDPOINT', 'https://minio.dev.ankitson.com')
+MINIO_CONSOLE := env('MINIO_CONSOLE', 'https://minio-console.dev.ankitson.com')
+
+minio-up:
+  test -f {{MINIO_SECRET_ENV}} || (echo "Missing {{MINIO_SECRET_ENV}}; run: just rs" >&2; exit 1)
+  {{COMPOSE}} up -d minio minio-init
+
+minio-logs:
+  {{COMPOSE}} logs -f minio
+
+minio-console:
+  @echo {{MINIO_CONSOLE}}
+
+minio-client-env:
+  #!/usr/bin/env bash
+  set -euo pipefail
+  test -f {{MINIO_SECRET_ENV}} || (echo "Missing {{MINIO_SECRET_ENV}}; run: just rs" >&2; exit 1)
+  set -a
+  . {{MINIO_SECRET_ENV}}
+  set +a
+  endpoint="${MINIO_ENDPOINT:-${MINIO_SERVER_URL:-{{MINIO_ENDPOINT}}}}"
+  printf 'AWS_ACCESS_KEY_ID=%s\nAWS_SECRET_ACCESS_KEY=%s\nAWS_EC2_METADATA_DISABLED=true\nAWS_ENDPOINT_URL_S3=%s\n' "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" "$endpoint"
+
+minio-put file key="":
+  #!/usr/bin/env bash
+  set -euo pipefail
+  test -f {{MINIO_SECRET_ENV}} || (echo "Missing {{MINIO_SECRET_ENV}}; run: just rs" >&2; exit 1)
+  set -a
+  . {{MINIO_SECRET_ENV}}
+  set +a
+  src="{{file}}"
+  key="{{key}}"
+  if [ -z "$key" ]; then
+    key="$(basename "$src")"
+  fi
+  docker run --rm --network mybridge --entrypoint /bin/sh --env-file {{MINIO_SECRET_ENV}} \
+    -e MINIO_OBJECT_KEY="$key" \
+    -v "$(realpath "$src"):/upload:ro" \
+    quay.io/minio/mc:latest \
+    -c 'mc alias set dev http://minio:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null && mc cp /upload "dev/$MINIO_BUCKET/$MINIO_OBJECT_KEY" >/dev/null'
+  url_key="$(python3 -c 'from urllib.parse import quote; import sys; print(quote(sys.argv[1]))' "$key")"
+  endpoint="${MINIO_ENDPOINT:-${MINIO_SERVER_URL:-{{MINIO_ENDPOINT}}}}"
+  printf '%s/%s/%s\n' "$endpoint" "$MINIO_BUCKET" "$url_key"
+
+minio-smoke:
+  #!/usr/bin/env bash
+  set -euo pipefail
+  test -f {{MINIO_SECRET_ENV}} || (echo "Missing {{MINIO_SECRET_ENV}}; run: just rs" >&2; exit 1)
+  set -a
+  . {{MINIO_SECRET_ENV}}
+  set +a
+  {{COMPOSE}} up -d minio minio-init
+  tmp="$(mktemp)"
+  trap 'rm -f "$tmp"' EXIT
+  printf 'minio smoke %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$tmp"
+  key=".smoke/minio.txt"
+  docker run --rm --network mybridge --entrypoint /bin/sh --env-file {{MINIO_SECRET_ENV}} \
+    -e MINIO_OBJECT_KEY="$key" \
+    -v "$tmp:/upload:ro" \
+    quay.io/minio/mc:latest \
+    -c 'mc alias set dev http://minio:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null && mc cp /upload "dev/$MINIO_BUCKET/$MINIO_OBJECT_KEY" >/dev/null'
+  endpoint="${MINIO_ENDPOINT:-${MINIO_SERVER_URL:-{{MINIO_ENDPOINT}}}}"
+  curl -fsS "$endpoint/$MINIO_BUCKET/.smoke/minio.txt"
+
+
+# ── Unsloth Studio patched UI ───────────────────────────────────────
+unsloth-studio-up:
+  {{COMPOSE}} up -d unsloth-studio
+
+unsloth-studio-logs:
+  {{COMPOSE}} logs -f unsloth-studio
+
+unsloth-studio-smoke:
+  curl -fsS http://127.0.0.1:${UNSLOTH_STUDIO_PORT:-8892}/api/health | python3 -m json.tool
+
 # ── Speaches-specific (no generic compose equivalent) ────────────────
 # Preload the default whisper model (downloads weights if not cached).
 speaches-pull model="deepdml/faster-whisper-large-v3-turbo-ct2":

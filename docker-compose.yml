@@ -325,6 +325,42 @@ services:
       - "127.0.0.1:${PHOENIX_PORT:-6006}:6006"
       - "127.0.0.1:${PHOENIX_GRPC_PORT:-4317}:4317"
 
+  # ── MinIO: local S3-compatible object store for downloadable dev files ─────
+  # API endpoint: http://127.0.0.1:39000 (containers use http://minio:9000).
+  # Console: http://127.0.0.1:39001. The minio-init job creates the `files`
+  # bucket and makes it anonymously readable for download-only clients.
+  minio:
+    image: quay.io/minio/minio:latest
+    container_name: minio
+    hostname: minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    env_file:
+      - ./secrets/minio.env
+    volumes:
+      - /mnt/store-ext4/minio:/data
+    ports:
+      - "127.0.0.1:${MINIO_API_PORT:-39000}:9000"
+      - "127.0.0.1:${MINIO_CONSOLE_PORT:-39001}:9001"
+
+  minio-init:
+    image: quay.io/minio/mc:latest
+    container_name: minio-init
+    depends_on:
+      - minio
+    env_file:
+      - ./secrets/minio.env
+    entrypoint:
+      - /bin/sh
+      - -ceu
+      - |
+        until mc alias set dev http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}"; do
+          sleep 2
+        done
+        mc mb --ignore-existing "dev/$${MINIO_BUCKET}"
+        mc anonymous set download "dev/$${MINIO_BUCKET}"
+        mc ls "dev/$${MINIO_BUCKET}" >/dev/null
+
   # ── OpenClaw gateway: personal AI assistant, runs in its own devbox-image container ─
   # Drives a browser only over CDP (browser.profiles.sidecar -> openclaw-browser:9222),
   # so the GUI lives in the sidecar, not here. State restored from ./volumes/openclaw.
