@@ -42,6 +42,20 @@
       "enabled": true
     },
     {
+      "name": "todoist",
+      "protocol": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@doist/todoist-mcp@10.4.1"
+      ],
+      "env": {
+        "TODOIST_API_KEY": "${env:TODOIST_API_KEY}"
+      },
+      "skip_quarantine": true,
+      "enabled": true
+    },
+    {
       "name": "websets",
       "protocol": "stdio",
       "command": "sh",

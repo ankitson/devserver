@@ -23,11 +23,14 @@
   },
 
   "mcp": {
+    "tool_manager_config": {
+      "disable_auto_tool_inject": true
+    },
     "client_configs": [
       {
         "name": "mcpproxy",
         "connection_type": "http",
-        "connection_string": "http://172.19.0.1:3130/mcp/all",
+        "connection_string": "http://172.19.0.1:3130/mcp",
         "is_ping_available": false,
         "auth_type": "headers",
         "headers": {
@@ -39,7 +42,7 @@
           "exa__web_search_advanced_exa",
           "exa__web_fetch_exa"
         ],
-        "allow_on_all_virtual_keys": true
+        "allow_on_all_virtual_keys": false
       }
     ]
   },
