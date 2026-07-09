@@ -653,6 +653,42 @@ services:
     networks:
       - mybridge
 
+  # ── nemotron-asr: NVIDIA Nemotron 3.5 ASR, OpenAI-compatible /v1/audio/transcriptions ─
+  # audio.cpp has no Nemotron support and no turnkey OpenAI server exists, so this thin
+  # FastAPI shim wraps NVIDIA NeMo's ASRModel (nvidia/nemotron-3.5-asr-streaming-0.6b,
+  # 600M multilingual) and serves POST /v1/audio/transcriptions. Bifrost registers it as
+  # a third `transcription` provider (nemotron-asr). Internal-only; mybridge as :8000.
+  nemotron-asr:
+    build:
+      context: /projects/audio-models
+    image: ankit/nemotron-asr:latest
+    container_name: nemotron-asr
+    hostname: nemotron-asr
+    restart: unless-stopped
+    environment:
+      - MODEL_DIRS=/models/nemotron,/models/parakeet-ctc
+    volumes:
+      - /mnt/store-ext4/models/nemotron-onnx:/models/nemotron:ro
+      - /mnt/store-ext4/models/parakeet-ctc-onnx:/models/parakeet-ctc:ro
+    ports:
+      - "127.0.0.1:${NEMOTRON_ASR_PORT:-8802}:8000"
+    shm_size: 2g
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - mybridge
+
   # ── Speaches: faster-whisper STT server, OpenAI-compatible /v1/audio/transcriptions ─
   # Internal-only (no LAN port) — reached via mybridge from openclaw / hermes / litellm.
   # Default WHISPER__MODEL is what `model=""` requests resolve to; clients can override
