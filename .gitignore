@@ -2,6 +2,9 @@
 volumes/
 secrets/
 .env
+*.local.env
+logs/*
+!logs/.gitkeep
 
 # Editor / local tooling
 .vscode
@@ -11,3 +14,8 @@ secrets/
 __pycache__/
 *.pyc
 .venv/
+
+# Generated upgrade plan
+docker-upgrade-plan.json
+docker-build-plan.json
+docker-upgrade-build-plans/

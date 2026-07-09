@@ -12,17 +12,56 @@
   },
   "agents": {
     "defaults": {
-      "thinkingDefault": "high"
+      "model": {
+        "primary": "bifrost/codex/gpt-5.4",
+        "fallbacks": []
+      },
+      "memorySearch": {
+        "provider": "openai-compatible",
+        "model": "unsloth/Qwen/Qwen3-Embedding-8B-GGUF",
+        "queryInputType": "query",
+        "documentInputType": "document",
+        "fallback": "none",
+        "remote": {
+          "baseUrl": "http://bifrost:8080/openai/v1",
+          "headers": {
+            "x-bf-passthrough-extra-params": "true"
+          }
+        }
+      },
+      "models": {
+        "bifrost/codex/gpt-5.3-codex-spark": {},
+        "bifrost/codex/gpt-5.4-mini": {},
+        "bifrost/codex/gpt-5.5": {},
+        "bifrost/codex/gpt-5.4": {},
+        "bifrost/deepseek/deepseek-v4-flash": {},
+        "bifrost/deepseek/deepseek-v4-pro": {},
+        "bifrost/anthropic/claude-opus-4-8": {},
+        "bifrost/unsloth/unsloth/default": {},
+        "bifrost/unsloth/current": {}
+      },
+      "thinkingDefault": "medium"
     },
     "list": [
-      { "id": "main", "workspace": "/cybernetics/agents/main", "default": true, "thinkingDefault": "high" },
-      { "id": "gilfoyle", "name": "gilfoyle", "workspace": "/cybernetics/agents/gilfoyle", "thinkingDefault": "high" },
-      { "id": "austin", "name": "austin", "workspace": "/cybernetics/agents/austin", "thinkingDefault": "high" }
+      { "id": "main", "workspace": "/cybernetics/agents/main", "default": true, "thinkingDefault": "medium", "params": { "bifrostAgentName": "main" } },
+      { "id": "gilfoyle", "name": "gilfoyle", "workspace": "/cybernetics/agents/gilfoyle", "thinkingDefault": "medium", "params": { "bifrostAgentName": "gilfoyle" } },
+      { "id": "austin", "name": "austin", "workspace": "/cybernetics/agents/austin", "thinkingDefault": "medium", "params": { "bifrostAgentName": "austin" } },
+      { "id": "emo", "name": "Emo", "workspace": "/cybernetics/agents/emo", "model": { "primary": "bifrost/unsloth/current", "fallbacks": [] }, "thinkingDefault": "high", "params": { "bifrostAgentName": "emo" }, "skills": ["todoist", "webby"], "tools": { "profile": "messaging", "deny": ["bundle-mcp"] } }
     ]
+  },
+  "tools": {
+    "sessions": {
+      "visibility": "all"
+    },
+    "agentToAgent": {
+      "enabled": true,
+      "allow": ["main", "gilfoyle", "austin", "emo"]
+    }
   },
   "bindings": [
     { "match": { "channel": "discord", "peer": { "kind": "channel", "id": "1513643336161034402" } }, "agentId": "gilfoyle" },
-    { "match": { "channel": "discord", "peer": { "kind": "channel", "id": "1514931682720088105" } }, "agentId": "austin" }
+    { "match": { "channel": "discord", "peer": { "kind": "channel", "id": "1514931682720088105" } }, "agentId": "austin" },
+    { "match": { "channel": "discord", "peer": { "kind": "channel", "id": "1523459169867399248" } }, "agentId": "emo" }
   ],
   "channels": {
     "discord": {
@@ -31,7 +70,8 @@
         "911234218556796938": {
           "channels": {
             "1513643336161034402": { "requireMention": false },
-            "1514931682720088105": { "requireMention": false }
+            "1514931682720088105": { "requireMention": false },
+            "1523459169867399248": { "requireMention": false }
           }
         }
       }
@@ -40,6 +80,31 @@
   "auth": {
     "order": {
       "openai": ["openai:{{ op://clankers/codex/username }}", "openai:default"]
+    }
+  },
+  "models": {
+    "mode": "merge",
+    "providers": {
+      "opencode": null,
+      "bifrost": {
+        "baseUrl": "http://bifrost:8080/openai/v1",
+        "apiKey": "{{ op://clankers/bifrost-vks/openclaw }}",
+        "api": "openai-completions",
+        "contextWindow": 200000,
+        "timeoutSeconds": 600,
+        "models": [
+          { "id": "openai/gpt-5.4-mini", "name": "Bifrost · gpt-5.4-mini (OpenAI API key)", "reasoning": false, "input": ["text"], "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 }, "contextWindow": 200000, "maxTokens": 8192, "api": "openai-completions" },
+          { "id": "codex/gpt-5.3-codex-spark", "name": "Bifrost · gpt-5.3-codex-spark (ChatGPT sub)", "reasoning": true },
+          { "id": "codex/gpt-5.4-mini", "name": "Bifrost · gpt-5.4-mini (ChatGPT sub)", "reasoning": true },
+          { "id": "codex/gpt-5.5", "name": "Bifrost · gpt-5.5 (ChatGPT sub)", "reasoning": true },
+          { "id": "codex/gpt-5.4", "name": "Bifrost · gpt-5.4 (ChatGPT sub)", "reasoning": true },
+          { "id": "deepseek/deepseek-v4-flash", "name": "Bifrost · DeepSeek V4 Flash" },
+          { "id": "deepseek/deepseek-v4-pro", "name": "Bifrost · DeepSeek V4 Pro" },
+          { "id": "anthropic/claude-opus-4-8", "name": "Bifrost · Claude Opus 4.8" },
+          { "id": "unsloth/unsloth/default", "name": "Bifrost · Unsloth default", "reasoning": true },
+          { "id": "unsloth/current", "name": "Bifrost · Unsloth current", "reasoning": true }
+        ]
+      }
     }
   }
 }

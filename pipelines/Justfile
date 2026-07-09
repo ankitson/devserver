@@ -22,9 +22,9 @@ pipelines-build *args:
 pipelines-logs *args:
   {{PIPELINES}} logs -f {{args}}
 
-up-dbos: (pipelines-up "mock-bank" "pipeline-dbos")
-up-dagster: (pipelines-up "mock-bank" "pipeline-dagster")
-up-restate: (pipelines-up "mock-bank" "restate-server" "pipeline-restate")
+up-dbos: (pipelines-up "pipeline-dbos")
+up-dagster: (pipelines-up "pipeline-dagster")
+up-restate: (pipelines-up "restate-server" "pipeline-restate")
 
 # Register the Restate SDK app with the Restate server (re-run after rebuild)
 restate-register:
@@ -32,11 +32,6 @@ restate-register:
     -H 'content-type: application/json' \
     -d '{"uri":"http://pipeline-restate:9080","force":true}' \
     | head -c 200; echo
-
-# Read the most-recent generated OTP from the mock bank
-mock-otp:
-  @docker exec mock-bank python3 -c \
-    "import urllib.request; print(urllib.request.urlopen('http://localhost:8000/current_otp').read().decode())"
 
 # Seed a pipeline DB's raw_responses from the source garmin DB
 pipeline-seed pipeline="dbos" start="2026-01-01" end="2026-05-18":
@@ -69,28 +64,6 @@ garmin-refetch start end="" pipeline="dagster":
 garmin-heal window="10" pipeline="dagster":
   docker exec pipeline-{{pipeline}} bash -lc \
     "cd /app/shared && uv run pipeline-shared heal --window {{window}}"
-
-# Trigger a bank import end-to-end for a given pipeline. The pipeline-specific
-# approval URL is printed; supply the OTP from `just mock-otp` to complete.
-bank-import-dbos:
-  @curl -s -X POST http://localhost:18801/trigger/bank_import \
-    -d 'bank_name=mock-bank&username=ankit&password=test'
-  @echo "  → approve at http://localhost:18801/approve?wf=<workflow_id from response>"
-
-bank-import-dagster:
-  @docker exec pipeline-dagster bash -lc \
-    "cd /app/dagster && uv run dagster job launch -j bank_login_job -m pipeline_dagster_proj.definitions" | tail -3
-  @echo "  → fill OTP in bank_pending: UPDATE bank_pending SET otp=<otp> WHERE id=<latest>"
-  @echo "  → sensor will fire bank_resume_job within 3s"
-
-bank-import-restate:
-  @WF_ID=$(python3 -c 'import uuid; print(uuid.uuid4())'); \
-    echo "wf=$WF_ID"; \
-    curl -s -X POST "http://localhost:18883/BankImport/$WF_ID/run/send" \
-      -H 'content-type: application/json' \
-      -d '{"bank_name":"mock-bank","username":"ankit","password":"test"}'
-  @echo
-  @echo "  → approval url printed in notifications table (kind='bank:otp_required')"
 
 # ── landing_zone (file-drop pipelines) ────────────────────────────
 # Host path of the landing zone — the network mount bound into pipeline-dagster
@@ -126,6 +99,12 @@ lz-drop pipeline batch_id +files:
 lz-gc:
   @docker exec pipeline-dagster bash -lc \
     "cd /app/dagster && uv run dagster job launch -j landing_zone_gc_job -m pipeline_dagster_proj.definitions" | tail -3
+
+# Import latest stories/comments for HN_USERNAMES from ClickHouse's updating
+# hackernews_history dataset into Postgres table hn_user_items.
+hn-import:
+  @docker exec pipeline-dagster bash -lc \
+    "cd /app/dagster && uv run dagster job launch -j hackernews_user_items_import_job -m pipeline_dagster_proj.definitions" | tail -3
 
 # List ready (un-archived) batches + last 20 entries in the batch ledger.
 lz-status:

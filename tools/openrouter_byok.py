@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.11"
+# ///
 """Sync declarative OpenRouter BYOK provider credentials
 (config/openrouter-byok.json) to the OpenRouter account.
 

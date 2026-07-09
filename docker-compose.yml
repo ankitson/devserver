@@ -1,38 +1,4 @@
 services:
-  # ── LiteLLM Gateway ─────────────────────────────────────────────
-  litellm:
-    image: ghcr.io/berriai/litellm:main-latest
-    restart: unless-stopped
-    depends_on:
-      litellm-db:
-        condition: service_healthy
-    env_file:
-      - ./secrets/litellm.env
-    volumes:
-      - ./config/litellm.yaml:/app/config.yaml:ro
-    ports:
-      - "${LITELLM_PORT:-4000}:4000"
-    command:
-      [
-        "--config", "/app/config.yaml",
-        "--port", "4000",
-        "--detailed_debug",
-      ]
-  litellm-db:
-    image: postgres:16-alpine
-    container_name: litellm-db
-    restart: unless-stopped
-    env_file:
-      - ./config/litellm-db.env
-      - ./secrets/litellm.env
-    volumes:
-      - litellm_pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD", "pg_isready", "-U", "litellm"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
   # ── Bifrost LLM Gateway ─────────────────────────────────────────
   # Go-based OpenAI/Anthropic-compatible gateway (maximhq/bifrost). Lives on
   # mybridge; other services reach it at http://bifrost:8080. Provider API keys
@@ -48,7 +14,9 @@ services:
   # Integration endpoints: /openai/v1 (OpenAI-compatible), /anthropic (Claude Code),
   # /genai (Gemini). Web UI + request logs at http://127.0.0.1:8090.
   bifrost:
-    image: maximhq/bifrost:latest
+    image: ankit/bifrost-dynamic:latest
+    build:
+      context: /projects/dockers/bifrost-dynamic
     container_name: bifrost
     hostname: bifrost
     restart: unless-stopped
@@ -59,6 +27,44 @@ services:
       - ./secrets/bifrost.config.json:/app/data/config.json:ro   # rendered from config/bifrost.config.json.tmpl by `just rs` (holds the mcpproxy bearer token)
     ports:
       - "127.0.0.1:${BIFROST_PORT:-8090}:8080"   # local debug + Web UI; LAN/TLS via Caddy
+
+  # ── codex-oauth: ChatGPT/Codex subscription -> OpenAI-compatible /v1 ─────────
+  # Lets Bifrost ride a ChatGPT Plus/Pro subscription (no API credits) by wrapping
+  # EvanZhouDev/openai-oauth: it reads a Codex OAuth auth.json, auto-refreshes the
+  # token, and proxies to chatgpt.com/backend-api/codex. Bifrost registers it as the
+  # custom `codex` provider (base_url http://codex-oauth:10531; see bifrost.config.json.tmpl).
+  # On mybridge so Bifrost reaches it at http://codex-oauth:10531.
+  #
+  # AUTH IS A ONE-TIME MANUAL STEP — use a DEDICATED login, not the host's ~/.codex,
+  # so this proxy's rotating refresh token can't invalidate the host Codex CLI:
+  #   CODEX_HOME="$(pwd)/secrets/codex-oauth" codex login --device-auth
+  # --device-auth prints a code + URL (no localhost:1455 callback), so it works on this
+  # headless box without port-forwarding. The auth.json is password-equivalent; secrets/ gitignored.
+  # ToS: personal single-seat use only — internal (no LAN port), no token pooling.
+  codex-oauth:
+    image: ankit/codex-oauth-proxy:latest
+    build:
+      context: /projects/dockers/codex-oauth-proxy
+    container_name: codex-oauth
+    hostname: codex-oauth
+    restart: unless-stopped
+    env_file:
+      - ./config/codex-oauth.env
+    volumes:
+      - ./secrets/codex-oauth:/codex   # dedicated auth.json (rw: proxy refreshes it); gitignored
+    ports:
+      - "127.0.0.1:${CODEX_OAUTH_PORT:-10531}:10531"   # local debug only; service-to-service via hostname
+    logging:
+      driver: json-file
+      options:
+        max-size: 20m
+        max-file: 5
+    healthcheck:
+      test: ["CMD", "nc", "-z", "127.0.0.1", "10531"]   # liveness only; avoids hitting chatgpt upstream
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
   # ── SillyTavern: LLM chat frontend, pointed at Bifrost ──────────────
   # Web UI on 8000. On mybridge so it reaches the gateway at http://bifrost:8080.
@@ -86,6 +92,29 @@ services:
     ports:
       - "127.0.0.1:${SILLYTAVERN_PORT:-8001}:8000"   # local debug; LAN/TLS via Caddy
 
+  # ── SillyTavern image adapter: A1111-shaped API backed by external image services ─
+  # SillyTavern's OpenAI/OpenRouter image providers are hardcoded to their public
+  # APIs. This adapter uses the configurable Stable Diffusion WebUI source and
+  # translates /sdapi/v1/txt2img calls into a configured image backend.
+  sillytavern-bifrost-image:
+    build:
+      context: /projects/dockers/sillytavern-bifrost-image-adapter
+    image: ankit/sillytavern-bifrost-image:latest
+    container_name: sillytavern-bifrost-image
+    restart: unless-stopped
+    depends_on:
+      - bifrost
+    ports:
+      - "127.0.0.1:7862:7860"
+    env_file:
+      - ./secrets/bifrost.env
+      - ./secrets/sillytavern-image.env
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:7860/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
   # ── MCPProxy: shared MCP gateway with upstream OAuth and scoped agent tokens ─
   # Host networking is required for OAuth providers that redirect to MCPProxy's
   # loopback callback listener. The HTTP API still binds only to mybridge's host
@@ -94,10 +123,7 @@ services:
     build:
       context: /projects/dockers/mcpproxy
       dockerfile: Dockerfile
-      args:
-        MCPPROXY_VERSION: "0.43.0"
-        MCPPROXY_SHA256: "ce1c8ab598e5c92b8af3eeaa6c640be994d8839c6bdf9a7eceacd2250300635d"
-    image: ankit/mcpproxy:0.43.0
+    image: ankit/mcpproxy:latest
     container_name: mcpproxy
     hostname: mcpproxy
     restart: unless-stopped
@@ -122,7 +148,7 @@ services:
   dns-probe:
     build:
       context: ./tools/dns_probe
-    image: ankit/dns-probe:local
+    image: ankit/dns-probe:latest
     container_name: dns-probe
     hostname: dns-probe
     restart: unless-stopped
@@ -138,9 +164,47 @@ services:
     volumes:
       - ./logs:/logs
 
+  # ── Job Search: dedicated tracker container with direct SQLite shutdown ─────
+  # Own service/image so Docker sends SIGTERM directly to the Bun server. The app
+  # handles that signal by stopping its worker, checkpointing WAL, and closing
+  # state/jobsearch.db before the container exits.
+  job-search:
+    build:
+      context: /projects/job-search
+      dockerfile: Dockerfile
+    image: ankit/job-search:latest
+    container_name: job-search
+    hostname: job-search
+    user: "1000:1000"
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 90s
+    env_file:
+      - /projects/job-search/.env
+    environment:
+      - HOST=0.0.0.0
+      - PORT=9006
+      - RESUME_RENDER_URL=http://app-runner:3002/api/render
+    volumes:
+      - /projects/job-search/state:/app/state
+      - /projects/job-search/profile:/app/profile
+      - /projects/job-search/profiles:/app/profiles
+      - /projects/job-search/applications:/app/applications
+      - /projects/job-search/runtime:/app/runtime
+      # Codex CLI auth so extract/fit/answers endpoints work in the container.
+      - /home/ankit/.codex:/home/ankit/.codex
+    ports:
+      - "127.0.0.1:9006:9006"
+    healthcheck:
+      test: ["CMD", "bun", "-e", "const r=await fetch('http://127.0.0.1:9006/api/stats'); process.exit(r.ok?0:1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
   # ── Agent sandbox: devbox-image container that Hermes drives over SSH ──────
   agent-devbox:
-    image: ankit/devbox:1.4
+    image: ankit/devbox:latest
     container_name: agent-devbox
     hostname: agent-devbox
     env_file:
@@ -173,7 +237,7 @@ services:
   # (http://172.19.0.1:3130), agent-browser, speaches, etc. by hostname/IP.
   # No GPU, no seccomp:unconfined, no OP service-account token — least privilege.
   agent-sandbox:
-    image: ankit/devbox:1.4
+    image: ankit/devbox:latest
     container_name: agent-sandbox
     hostname: agent-sandbox
     restart: unless-stopped
@@ -217,7 +281,7 @@ services:
   # Reached via Caddy at https://agentsview.dev.ankitson.com (reverse_proxy agentsview:8080).
   # --public-url makes agentsview trust that host/origin (DNS-rebinding guard).
   agentsview:
-    image: ankit/agentsview:abcbd2b
+    image: ankit/agentsview:latest
     container_name: agentsview
     restart: unless-stopped
     command: ["--host", "0.0.0.0", "--no-browser", "--public-url", "https://agentsview.dev.ankitson.com"]
@@ -229,29 +293,85 @@ services:
       - CODEX_SESSIONS_DIR=/agents/codex
       - GEMINI_DIR=/agents/gemini
       - HERMES_SESSIONS_DIR=/agents/hermes
+      - OPENCLAW_DIR=/agents/openclaw
       - PI_DIR=/agents/pi
+      - AGENTSVIEW_TELEMETRY_ENABLED=0
     volumes:
       - ./volumes/agentsview:/data                       # SQLite DB (gitignored)
+      - ./volumes/agentsview-sources:/agent-sources:ro   # Machine-tagged remote transcript mirrors
       - ${HOME}/.claude/projects:/agents/claude:ro
       - ${HOME}/.local/share/opencode:/agents/opencode:ro
       - ${HOME}/.codex/sessions:/agents/codex:ro
       - ${HOME}/.gemini:/agents/gemini:ro
       - ${HOME}/.pi/agent/sessions:/agents/pi:ro
       - ${HOME}/hroot/devserver/volumes/hermes/sessions:/agents/hermes:ro
+      - ${HOME}/hroot/devserver/volumes/openclaw/agents:/agents/openclaw:ro
+
+  # ── Phoenix: OTLP trace viewer for Azimuth workflow and agent runs ─────────
+  # Canonical Azimuth traces are OTLP JSON files. Phoenix gives us a standard
+  # OpenTelemetry ingestion endpoint and UI: HTTP OTLP on :6006/v1/traces,
+  # gRPC OTLP on :4317, and the web UI on :6006. Bound to loopback only; add a
+  # Caddy route later if it needs a dev.ankitson.com hostname.
+  phoenix:
+    image: arizephoenix/phoenix:latest
+    container_name: phoenix
+    hostname: phoenix
+    restart: unless-stopped
+    environment:
+      - PHOENIX_WORKING_DIR=/mnt/data
+    volumes:
+      - ./volumes/phoenix:/mnt/data
+    ports:
+      - "127.0.0.1:${PHOENIX_PORT:-6006}:6006"
+      - "127.0.0.1:${PHOENIX_GRPC_PORT:-4317}:4317"
+
+  # ── MinIO: local S3-compatible object store for downloadable dev files ─────
+  # API endpoint: http://127.0.0.1:39000 (containers use http://minio:9000).
+  # Console: http://127.0.0.1:39001. The minio-init job creates the `files`
+  # bucket and makes it anonymously readable for download-only clients.
+  minio:
+    image: quay.io/minio/minio:latest
+    container_name: minio
+    hostname: minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    env_file:
+      - ./secrets/minio.env
+    volumes:
+      - /mnt/store-ext4/minio:/data
+    ports:
+      - "127.0.0.1:${MINIO_API_PORT:-39000}:9000"
+      - "127.0.0.1:${MINIO_CONSOLE_PORT:-39001}:9001"
+
+  minio-init:
+    image: quay.io/minio/mc:latest
+    container_name: minio-init
+    depends_on:
+      - minio
+    env_file:
+      - ./secrets/minio.env
+    entrypoint:
+      - /bin/sh
+      - -ceu
+      - |
+        until mc alias set dev http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}"; do
+          sleep 2
+        done
+        mc mb --ignore-existing "dev/$${MINIO_BUCKET}"
+        mc anonymous set download "dev/$${MINIO_BUCKET}"
+        mc ls "dev/$${MINIO_BUCKET}" >/dev/null
 
   # ── OpenClaw gateway: personal AI assistant, runs in its own devbox-image container ─
   # Drives a browser only over CDP (browser.profiles.sidecar -> openclaw-browser:9222),
   # so the GUI lives in the sidecar, not here. State restored from ./volumes/openclaw.
   openclaw:
     build:
-      # Build context fetched from git so other machines can rebuild without
-      # cloning /projects/dockers locally. `#main:openclaw` = main branch,
-      # openclaw/ subdir of the repo.
-      context: https://git.home.ankitson.com/ankitson/dockers.git#main:openclaw
+      # Local custom image; rebuild with --no-cache to pick up npm latest.
+      context: /projects/dockers/openclaw
       dockerfile: Dockerfile
       args:
         DEVBOX_TAG: "latest"         # ankit/devbox:latest (currently aliases 1.5)
-    image: ankit/openclaw:local
+    image: ankit/openclaw:latest
     container_name: openclaw
     hostname: openclaw
     restart: unless-stopped
@@ -262,6 +382,8 @@ services:
     # just the gateway shell that the entrypoint sources from the bind-mount.
     env_file:
       - ./secrets/openclaw.env
+    environment:
+      - OPENCLAW_SESSION_CACHE_TTL_MS=0
     volumes:
       - ./volumes/openclaw:/home/ankit/.openclaw            # restored live state (gitignored)
       - ./secrets/openclaw.env:/run/openclaw/openclaw.env:ro
@@ -301,9 +423,9 @@ services:
   # The OPENCLAW_BROWSER_* env names are the upstream relay's wire contract (kept as-is).
   agent-browser:
     build:
-      context: https://git.home.ankitson.com/ankitson/dockers.git#main:agent-browser
+      context: /projects/dockers/agent-browser
       dockerfile: Dockerfile
-    image: ankit/agent-browser:local
+    image: ankit/agent-browser:latest
     container_name: agent-browser
     hostname: agent-browser
     restart: unless-stopped
@@ -351,6 +473,222 @@ services:
       timeout: 5s
       retries: 3
 
+
+  # ── Unsloth Studio: patched web UI pointed at Bifrost ─────────────────
+  # This is a UI/proxy Studio instance only; Bifrost already routes model calls
+  # to the Windows Unsloth backend. Patched source lives in /projects/code/unsloth.
+  unsloth-studio:
+    image: python:3.12-slim
+    container_name: unsloth-studio
+    hostname: unsloth-studio
+    user: "1000:1000"
+    restart: unless-stopped
+    depends_on:
+      - bifrost
+    entrypoint: ["/bin/bash", "/entrypoint/unsloth-studio-entrypoint.sh"]
+    env_file:
+      - ./secrets/unsloth-studio.env
+      - ./secrets/mcpproxy.env
+      - ./secrets/unsloth-bifrost.env
+    environment:
+      - HOME=/data/home
+      - UNSLOTH_STUDIO_HOME=/data/home
+      - UNSLOTH_STUDIO_PORT=8892
+      - UNSLOTH_BIFROST_BASE_URL=http://bifrost:8080/openai/v1
+      - UNSLOTH_MCP_PROXY_URL=http://172.19.0.1:3130/mcp/call
+      - UNSLOTH_MCP_PROXY_DISPLAY_NAME=MCPProxy Search
+      - UNSLOTH_STUDIO_ALLOW_STDIO_MCP=0
+      - HF_HOME=/data/cache/huggingface
+      - XDG_CACHE_HOME=/data/cache
+    volumes:
+      - /home/ankit/hroot/projects/code/unsloth:/src:rw
+      - ./volumes/unsloth-studio:/data:rw
+      - ./scripts/unsloth-studio-entrypoint.sh:/entrypoint/unsloth-studio-entrypoint.sh:ro
+    ports:
+      - "127.0.0.1:${UNSLOTH_STUDIO_PORT:-8892}:8892"
+
+  # ── audiocpp: native ggml audio engine (TTS + STT), OpenAI-compatible ───────
+  # audio.cpp HTTP server exposing /v1/audio/speech (TTS) and /v1/audio/transcriptions
+  # (STT), plus /v1/models and /v1/audio/voices. Same OpenAI surface as `speaches`, so
+  # Bifrost registers it as a second `audiocpp` provider (base_provider_type openai).
+  # Built straight from the repo checkout (/projects/.../audio.cpp) using its own
+  # .devops/cuda.Dockerfile; the .tmpl server config is rendered to secrets/audiocpp.json
+  # by `just rs`. Shares the 2070 SUPER with speaches — see WHISPER__TTL note there;
+  # both engines can be hot at once, so expect VRAM pressure under concurrent load.
+  # Internal-only (no LAN port) — reached via mybridge as http://audiocpp:8080.
+  audiocpp:
+    build:
+      context: /projects/external-repo/audio.cpp
+      dockerfile: .devops/cuda.Dockerfile
+    image: ankit/audiocpp:latest
+    container_name: audiocpp
+    hostname: audiocpp
+    restart: unless-stopped
+    command: ["server", "--config", "/server.json"]
+    volumes:
+      - ./secrets/audiocpp.json:/server.json:ro        # rendered from config/audiocpp.json.tmpl by `just rs`
+      - /mnt/store-ext4/models/audiocpp:/models:rw       # model weights (Qwen3-ASR, TTS, etc.)
+      - /mnt/store-ext4/models/hf-cache:/home/ubuntu/.cache/huggingface
+      # Silero VAD is a bundled framework asset (not a downloadable package); mount it read-only.
+      - /projects/external-repo/audio.cpp/assets/framework/models/silero_vad:/models/silero_vad:ro
+      # Default voice-clone reference for zero-config TTS (OpenAI speech clients only send `input`).
+      - /projects/external-repo/audio.cpp/assets/resources/sample.wav:/models/voice_ref.wav:ro
+    ports:
+      - "127.0.0.1:${AUDIOCPP_PORT:-8801}:8080"         # local debug only; service-to-service via hostname
+    shm_size: 1g
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - mybridge
+
+  # ── open-webui: voice-chat web UI chaining STT -> LLM -> TTS via bifrost ───────
+  # The only mainstream self-hosted chat UI with custom OpenAI-compatible STT
+  # (/v1/audio/transcriptions) and TTS (/v1/audio/speech) endpoints. All three
+  # (STT, chat, TTS) point at the single bifrost gateway at one VK. Enable the mic
+  # + speaker icons per chat to get voice conversation. On mybridge so it reaches
+  # bifrost at http://bifrost:8080/openai/v1. Exposed on 3000 (LAN/TLS via Caddy).
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    hostname: open-webui
+    restart: unless-stopped
+    env_file:
+      - ./secrets/openwebui.env                  # VK, API keys, admin creds, secret key
+      - ./secrets/mcpproxy.env                   # MCPPROXY_API_KEY for MCP tool server
+    volumes:
+      - ./volumes/open-webui:/app/backend/data    # persistent SQLite database + uploads
+      - ./scripts/open-webui-entrypoint.sh:/app/backend/entrypoint.sh:ro  # MCP proxy seed
+    command: bash /app/backend/entrypoint.sh
+    environment:
+      # ── Persistence: force env vars to always win over WebUI database ──
+      - ENABLE_PERSISTENT_CONFIG=false
+
+      # ── MCP tool server (mcpproxy) ──
+      - MCPPROXY_URL=http://172.19.0.1:3130/mcp
+      - MCPPROXY_DISPLAY_NAME=MCPProxy Search
+
+      # ── HTTP client timeout (safety net for hanging streams) ──
+      - AIOHTTP_CLIENT_TIMEOUT=300
+
+      # ── Admin auto-creation (from env_file: WEBUI_ADMIN_EMAIL, WEBUI_ADMIN_PASSWORD) ──
+      - WEBUI_ADMIN_NAME=Admin
+
+      # ── Networking ──
+      - WEBUI_URL=https://chat.home.ankitson.com
+
+      # ── LLM backend (all providers via bifrost) ──
+      - OPENAI_API_BASE_URL=http://bifrost:8080/openai/v1
+      - BYPASS_MODEL_ACCESS_CONTROL=true
+      - ENABLE_CUSTOM_MODEL_FALLBACK=true
+      - DEFAULT_PINNED_MODELS=openrouter/anthropic/claude-sonnet-4-20250514,openrouter/openai/gpt-4o,openrouter/google/gemini-2.5-flash,openrouter/meta-llama/llama-4-maverick,unsloth/unsloth/gemma-4-27b-it-bnb-4bit
+
+      # ── Speech: STT + TTS via bifrost ──
+      - AUDIO_STT_ENGINE=openai
+      - AUDIO_STT_OPENAI_API_BASE_URL=http://bifrost:8080/openai/v1
+      - AUDIO_STT_MODEL=speaches/deepdml/faster-whisper-large-v3-turbo-ct2
+      - AUDIO_TTS_ENGINE=openai
+      - AUDIO_TTS_OPENAI_API_BASE_URL=http://bifrost:8080/openai/v1
+      - AUDIO_TTS_MODEL=speaches/speaches-ai/Kokoro-82M-v1.0-ONNX
+      - AUDIO_TTS_VOICE=af_heart
+      - ENABLE_FORCED_TTS_AUTO_PLAY=true
+
+      # ── Embeddings / RAG ──
+      - RAG_EMBEDDING_ENGINE=openai
+      - RAG_EMBEDDING_OPENAI_BASE_URL=http://bifrost:8080/openai/v1
+      - RAG_EMBEDDING_MODEL=ollama/nomic-embed-text
+      - ENABLE_RAG_LOCAL_WEB_FETCH=true
+
+      # ── Web Search (SearXNG) ──
+      - ENABLE_WEB_SEARCH=true
+      - WEB_SEARCH_ENGINE=searxng
+      - SEARXNG_QUERY_URL=http://searxng:8080/search
+      - WEB_SEARCH_RESULT_COUNT=10
+      - WEB_SEARCH_CONCURRENT_REQUESTS=2
+
+      # ── Image Generation via bifrost (openrouter models) ──
+      - IMAGE_GENERATION_ENGINE=openai
+      - IMAGE_GENERATION_OPENAI_API_BASE_URL=http://bifrost:8080/openai/v1
+      - IMAGE_GENERATION_MODEL=openrouter/black-forest-labs/flux.2-klein-4b
+      # ComfyUI (native engine, not through bifrost). Uncomment when comfy.win.ankitson.com is up:
+      # - IMAGE_GENERATION_ENGINE=comfyui
+      # - COMFYUI_BASE_URL=https://comfy.win.ankitson.com
+
+      # ── Code Execution ──
+      # No sandbox container available; leave disabled or point at local jupyter
+      # - CODE_EXECUTION_ENGINE=jupyter
+
+      # ── Iframe sandbox: allow same-origin ──
+      - "IFRAME_CSP=default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; connect-src 'self' *; frame-src 'self' *; img-src 'self' data: blob: *; style-src 'self' 'unsafe-inline'"
+
+      # ── Features ──
+      - ENABLE_SIGNUP=true
+      - ENABLE_BASE_MODELS_CACHE=true
+      - ENABLE_AUTOCOMPLETE_GENERATION=false
+      - DEFAULT_USER_ROLE=user
+      - ENABLE_MEMORIES=true
+      - ENABLE_MEMORY_SYSTEM_CONTEXT=true
+      - ENABLE_MEMORY_BACKGROUND_REVIEW=true
+      - ENABLE_FOLDERS=true
+      - ENABLE_NOTES=true
+      - ENABLE_CHANNELS=true
+      - ENABLE_CALENDAR=true
+      - ENABLE_AUTOMATIONS=true
+
+      # ── HF Hub ──
+      - HF_HUB_OFFLINE=1
+
+      # ── Database connection pool size (default 512 exhausts FD limit for SQLite) ──
+      - DATABASE_POOL_SIZE=10
+    networks:
+      - mybridge
+
+  # ── nemotron-asr: NVIDIA Nemotron 3.5 ASR, OpenAI-compatible /v1/audio/transcriptions ─
+  # audio.cpp has no Nemotron support and no turnkey OpenAI server exists, so this thin
+  # FastAPI shim wraps NVIDIA NeMo's ASRModel (nvidia/nemotron-3.5-asr-streaming-0.6b,
+  # 600M multilingual) and serves POST /v1/audio/transcriptions. Bifrost registers it as
+  # a third `transcription` provider (nemotron-asr). Internal-only; mybridge as :8000.
+  nemotron-asr:
+    build:
+      context: /projects/audio-models
+    image: ankit/nemotron-asr:latest
+    container_name: nemotron-asr
+    hostname: nemotron-asr
+    restart: unless-stopped
+    environment:
+      - MODEL_DIRS=/models/nemotron,/models/parakeet-ctc
+    volumes:
+      - /mnt/store-ext4/models/nemotron-onnx:/models/nemotron:ro
+      - /mnt/store-ext4/models/parakeet-ctc-onnx:/models/parakeet-ctc:ro
+    ports:
+      - "127.0.0.1:${NEMOTRON_ASR_PORT:-8802}:8000"
+    shm_size: 2g
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - mybridge
+
   # ── Speaches: faster-whisper STT server, OpenAI-compatible /v1/audio/transcriptions ─
   # Internal-only (no LAN port) — reached via mybridge from openclaw / hermes / litellm.
   # Default WHISPER__MODEL is what `model=""` requests resolve to; clients can override
@@ -369,7 +707,7 @@ services:
     ports:
       - "127.0.0.1:8800:8000"             # local debug only; service-to-service via hostname
     volumes:
-      - speaches_hf_cache:/home/ubuntu/.cache/huggingface   # persist downloaded whisper weights
+      - /mnt/store-ext4/models/hf-cache:/home/ubuntu/.cache/huggingface   # persist downloaded whisper weights
     shm_size: 1g
     deploy:
       resources:
@@ -379,13 +717,13 @@ services:
               count: 1
               capabilities: [gpu]
 volumes:
-  litellm_pgdata:
   mcpproxy_data:
   agent_devbox_home:
   agent_sandbox_home:
   agent_browser_home:
-  speaches_hf_cache:
 networks:
   default:
     name: mybridge
+    external: true
+  mybridge:
     external: true

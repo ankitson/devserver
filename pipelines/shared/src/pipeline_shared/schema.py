@@ -11,6 +11,8 @@ When a GarminStore connects to a pipeline DB for the first time, it creates the
 - `anomaly_events` — detected anomalies per (date, metric, kind).
 - `transactions` — banking transactions (mock bank).
 - `bank_imports` — bank import workflow audit log.
+- `hn_user_items` — selected Hacker News users' latest stories/comments from
+  ClickHouse's public updating HN dataset.
 
 Everything is created with `IF NOT EXISTS`. Idempotent.
 """
@@ -195,6 +197,34 @@ CREATE INDEX IF NOT EXISTS x_bookmarks_created
     ON x_bookmarks (tweet_created_at DESC);
 CREATE INDEX IF NOT EXISTS x_bookmarks_account_created
     ON x_bookmarks (account_id, tweet_created_at DESC);
+
+-- Hacker News stories/comments imported from ClickHouse's updating
+-- hackernews_history dataset. Keyed by HN item id; re-running the Dagster job
+-- upserts the latest ReplacingMergeTree version for each item.
+CREATE TABLE IF NOT EXISTS hn_user_items (
+    id            BIGINT PRIMARY KEY,
+    author        TEXT NOT NULL,
+    item_type     TEXT NOT NULL,
+    hn_time       TIMESTAMPTZ,
+    update_time   TIMESTAMPTZ,
+    deleted       BOOLEAN NOT NULL DEFAULT FALSE,
+    dead          BOOLEAN NOT NULL DEFAULT FALSE,
+    parent        BIGINT,
+    poll          BIGINT,
+    kids          BIGINT[] NOT NULL DEFAULT '{}',
+    url           TEXT,
+    score         INTEGER,
+    title         TEXT,
+    text          TEXT,
+    parts         BIGINT[] NOT NULL DEFAULT '{}',
+    descendants   INTEGER,
+    raw           JSONB NOT NULL,
+    imported_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS hn_user_items_author_time
+    ON hn_user_items (author, hn_time DESC);
+CREATE INDEX IF NOT EXISTS hn_user_items_type_time
+    ON hn_user_items (item_type, hn_time DESC);
 """
 
 

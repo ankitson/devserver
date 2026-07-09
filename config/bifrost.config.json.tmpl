@@ -23,11 +23,14 @@
   },
 
   "mcp": {
+    "tool_manager_config": {
+      "disable_auto_tool_inject": true
+    },
     "client_configs": [
       {
         "name": "mcpproxy",
         "connection_type": "http",
-        "connection_string": "http://172.19.0.1:3130/mcp/all",
+        "connection_string": "http://172.19.0.1:3130/mcp",
         "is_ping_available": false,
         "auth_type": "headers",
         "headers": {
@@ -39,10 +42,54 @@
           "exa__web_search_advanced_exa",
           "exa__web_fetch_exa"
         ],
-        "allow_on_all_virtual_keys": true
+        "allow_on_all_virtual_keys": false
       }
     ]
   },
+
+  "governance": {
+    "pricing_overrides": [
+      {
+        "id": "ollama-provider-zero-cost",
+        "name": "Ollama Provider Zero Cost",
+        "scope_kind": "provider",
+        "provider_id": "ollama",
+        "match_type": "wildcard",
+        "pattern": "*",
+        "request_types": ["chat_completion", "text_completion", "responses", "embedding"],
+        "pricing_patch": "{\"input_cost_per_token\":0,\"output_cost_per_token\":0}"
+      }
+    ]
+  },
+
+  "plugins": [
+    {
+      "enabled": true,
+      "name": "model-policy-suffix",
+      "path": "/app/plugins/model-policy-suffix.so",
+      "version": 1
+    },
+    {
+      "enabled": true,
+      "name": "embedding-task-prefix",
+      "path": "/app/plugins/embedding-task-prefix.so",
+      "version": 1,
+      "config": {
+        "strip_input_type": true,
+        "rules": [
+          {
+            "name": "ollama-nomic-embed-text",
+            "provider": "ollama",
+            "model_prefix": "nomic-embed-text",
+            "prefixes": {
+              "query": "search_query: ",
+              "document": "search_document: "
+            }
+          }
+        ]
+      }
+    }
+  ],
 
   "providers": {
     "openrouter": {
@@ -56,11 +103,7 @@
       ],
       "network_config": {
         "base_url": "https://openrouter.ai/api",
-        "default_request_timeout_in_seconds": 120,
-        "extra_headers": {
-          "HTTP-Referer": "https://dev.ankitson.com",
-          "X-Title": "bifrost-devserver"
-        }
+        "default_request_timeout_in_seconds": 600
       }
     },
 
@@ -69,6 +112,17 @@
         {
           "name": "anthropic-key-1",
           "value": "env.ANTHROPIC_API_KEY",
+          "models": ["*"],
+          "weight": 1.0
+        }
+      ]
+    },
+
+    "opencode-zen": {
+      "keys": [
+        {
+          "name": "opencode-zen-key-1",
+          "value": "env.OPENCODE_ZEN_API_KEY",
           "models": ["*"],
           "weight": 1.0
         }
@@ -86,18 +140,39 @@
       ]
     },
 
+    "codex": {
+      "keys": [
+        {
+          "name": "codex-oauth-noauth",
+          "value": "env.CODEX_PROXY_API_KEY",
+          "models": ["*"],
+          "weight": 1.0
+        }
+      ],
+      "network_config": {
+        "base_url": "http://codex-oauth:10531",
+        "default_request_timeout_in_seconds": 600,
+        "stream_idle_timeout_in_seconds": 300,
+        "allow_private_network": true
+      },
+      "custom_provider_config": {
+        "base_provider_type": "openai",
+        "allowed_requests": {
+          "list_models": true,
+          "chat_completion": true,
+          "chat_completion_stream": true,
+          "responses": true,
+          "responses_stream": true
+        }
+      }
+    },
+
     "nvidia": {
       "keys": [
         {
           "name": "nvidia-build-key-1",
           "value": "env.NVIDIA_API_KEY",
-          "models": [
-            "meta/llama-3.1-8b-instruct",
-            "nvidia/llama-3.1-nemotron-nano-8b-v1",
-            "nvidia/nvidia-nemotron-nano-9b-v2",
-            "nvidia/llama-3.3-nemotron-super-49b-v1.5",
-            "mistralai/mistral-small-4-119b-2603"
-          ],
+          "models": ["*"],
           "weight": 1.0
         }
       ],
@@ -108,6 +183,7 @@
       "custom_provider_config": {
         "base_provider_type": "openai",
         "allowed_requests": {
+          "list_models": true,
           "chat_completion": true,
           "chat_completion_stream": true,
           "embedding": true
@@ -120,7 +196,7 @@
         {
           "name": "deepseek-key-1",
           "value": "env.DEEPSEEK_API_KEY",
-          "models": ["deepseek-chat", "deepseek-reasoner"],
+          "models": ["*"],
           "weight": 1.0
         }
       ],
@@ -131,9 +207,85 @@
       "custom_provider_config": {
         "base_provider_type": "openai",
         "allowed_requests": {
+          "list_models": true,
           "chat_completion": true,
           "chat_completion_stream": true
         }
+      }
+    },
+
+    "nanogpt": {
+      "keys": [
+        {
+          "name": "nanogpt-key-1",
+          "value": "env.NANOGPT_API_KEY",
+          "models": ["*"],
+          "weight": 1.0
+        }
+      ],
+      "network_config": {
+        "base_url": "https://nano-gpt.com/api",
+        "default_request_timeout_in_seconds": 600,
+        "stream_idle_timeout_in_seconds": 300
+      },
+      "custom_provider_config": {
+        "base_provider_type": "openai",
+        "allowed_requests": {
+          "list_models": true,
+          "chat_completion": true,
+          "chat_completion_stream": true,
+          "text_completion": true,
+          "text_completion_stream": true,
+          "embedding": true
+        }
+      }
+    },
+
+    "unsloth": {
+      "keys": [
+        {
+          "name": "unsloth-studio-key-1",
+          "value": "env.UNSLOTH_STUDIO_API_KEY",
+          "models": ["*"],
+          "weight": 1.0
+        }
+      ],
+      "network_config": {
+        "base_url": "https://unsloth.win.ankitson.com",
+        "default_request_timeout_in_seconds": 600,
+        "stream_idle_timeout_in_seconds": 300,
+        "allow_private_network": true
+      },
+      "custom_provider_config": {
+        "base_provider_type": "openai",
+        "allowed_requests": {
+          "list_models": true,
+          "chat_completion": true,
+          "chat_completion_stream": true,
+          "text_completion": true,
+          "text_completion_stream": true,
+          "responses": true,
+          "responses_stream": true,
+          "embedding": true
+        }
+      }
+    },
+
+    "ollama": {
+      "keys": [
+        {
+          "name": "ollama-local",
+          "value": "",
+          "models": ["*"],
+          "weight": 1.0,
+          "ollama_key_config": {
+            "url": "env.OLLAMA_URL"
+          }
+        }
+      ],
+      "network_config": {
+        "allow_private_network": true,
+        "default_request_timeout_in_seconds": 120
       }
     },
 
@@ -142,7 +294,7 @@
         {
           "name": "speaches-noauth",
           "value": "env.SPEACHES_API_KEY",
-          "models": ["deepdml/faster-whisper-large-v3-turbo-ct2"],
+          "models": ["*"],
           "weight": 1.0
         }
       ],
@@ -154,9 +306,58 @@
       "custom_provider_config": {
         "base_provider_type": "openai",
         "allowed_requests": {
+          "list_models": true,
           "transcription": true,
           "transcription_stream": true,
           "speech": true
+        }
+      }
+    },
+
+    "audiocpp": {
+      "keys": [
+        {
+          "name": "audiocpp-noauth",
+          "value": "env.AUDIOCPP_API_KEY",
+          "models": ["*"],
+          "weight": 1.0
+        }
+      ],
+      "network_config": {
+        "base_url": "http://audiocpp:8080",
+        "default_request_timeout_in_seconds": 300,
+        "allow_private_network": true
+      },
+      "custom_provider_config": {
+        "base_provider_type": "openai",
+        "allowed_requests": {
+          "list_models": true,
+          "transcription": true,
+          "transcription_stream": true,
+          "speech": true
+        }
+      }
+    },
+
+    "nemotron-asr": {
+      "keys": [
+        {
+          "name": "nemotron-noauth",
+          "value": "env.NEMOTRON_API_KEY",
+          "models": ["*"],
+          "weight": 1.0
+        }
+      ],
+      "network_config": {
+        "base_url": "http://nemotron-asr:8000",
+        "default_request_timeout_in_seconds": 300,
+        "allow_private_network": true
+      },
+      "custom_provider_config": {
+        "base_provider_type": "openai",
+        "allowed_requests": {
+          "list_models": true,
+          "transcription": true
         }
       }
     }

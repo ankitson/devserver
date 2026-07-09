@@ -50,25 +50,30 @@ logs *args:
 build *args:
   {{COMPOSE}} build {{args}}
 
+# Pull remote agent transcripts into AgentsView and tag them by machine.
+agentsview-sync *args:
+  uv run bin/agentsview-sync-sources.py {{args}}
+
 # Pull latest image(s) and recreate. --no-deps keeps dependent services running.
-# Use this for services with `image:` only. For locally-built services (see
-# `upgrade-openclaw` below) the source dependency must be bumped first.
+# Use this for registry-backed services with `image:` only.
 upgrade *services:
   {{COMPOSE}} pull {{services}}
   {{COMPOSE}} up -d --no-deps {{services}}
 
 # Upgrade openclaw (locally-built; build context = ankitson/dockers git repo).
-# Resolves the npm version to install (default: latest), passes it as a build
-# arg, rebuilds, and recreates. The Dockerfile defaults to OPENCLAW_VERSION=
-# latest, so no source pin to bump unless you pass a specific version here
-# (useful for rollback: `just upgrade-openclaw 2026.5.25`).
+# Rebuilds with npm latest by default. Pass a version only for rollback:
+# `just upgrade-openclaw 2026.5.25`.
 upgrade-openclaw version="":
   #!/usr/bin/env bash
   set -euo pipefail
   V="{{version}}"
-  [ -z "$V" ] && V=$(npm view openclaw version)
-  echo "openclaw: building with openclaw@$V"
-  {{COMPOSE}} build --build-arg OPENCLAW_VERSION="$V" openclaw
+  if [ -z "$V" ]; then
+    echo "openclaw: building with npm latest"
+    {{COMPOSE}} build --pull --no-cache openclaw
+  else
+    echo "openclaw: building with openclaw@$V"
+    {{COMPOSE}} build --pull --no-cache --build-arg OPENCLAW_VERSION="$V" --build-arg OPENCLAW_CODEX_VERSION="$V" openclaw
+  fi
   {{COMPOSE}} up -d --no-deps openclaw
   echo
   docker exec openclaw bash -lc 'openclaw --version' 2>/dev/null | grep -v "Agent mode" | head -1 || true
@@ -102,6 +107,100 @@ openclaw-apps-logs:
 
 openclaw-apps-smoke slug="hello-openclaw":
   curl -fsS -H "Host: {{slug}}.dev.ankitson.com" http://127.0.0.1:18880/
+
+# ── Phoenix OTLP trace viewer ─────────────────────────────────────
+PHOENIX_URL := "http://127.0.0.1:6006"
+AUTOSWEEP_SPIKE := "/home/ankit/hroot/projects/autosweep-spike"
+
+phoenix-up:
+  {{COMPOSE}} up -d phoenix
+
+phoenix-logs:
+  {{COMPOSE}} logs -f phoenix
+
+phoenix-smoke:
+  curl -fsS {{PHOENIX_URL}}/ >/dev/null
+  @echo "Phoenix UI OK at {{PHOENIX_URL}}"
+
+phoenix-post-autosweep-latest:
+  cd {{AUTOSWEEP_SPIKE}}/pydantic && uv run export_otlp_traces.py --latest-postcap-batch --post-url {{PHOENIX_URL}}/v1/traces
+
+# ── MinIO S3-compatible object store ───────────────────────────────
+MINIO_SECRET_ENV := "./secrets/minio.env"
+MINIO_ENDPOINT := env('MINIO_ENDPOINT', 'https://minio.dev.ankitson.com')
+MINIO_CONSOLE := env('MINIO_CONSOLE', 'https://minio-console.dev.ankitson.com')
+
+minio-up:
+  test -f {{MINIO_SECRET_ENV}} || (echo "Missing {{MINIO_SECRET_ENV}}; run: just rs" >&2; exit 1)
+  {{COMPOSE}} up -d minio minio-init
+
+minio-logs:
+  {{COMPOSE}} logs -f minio
+
+minio-console:
+  @echo {{MINIO_CONSOLE}}
+
+minio-client-env:
+  #!/usr/bin/env bash
+  set -euo pipefail
+  test -f {{MINIO_SECRET_ENV}} || (echo "Missing {{MINIO_SECRET_ENV}}; run: just rs" >&2; exit 1)
+  set -a
+  . {{MINIO_SECRET_ENV}}
+  set +a
+  endpoint="${MINIO_ENDPOINT:-${MINIO_SERVER_URL:-{{MINIO_ENDPOINT}}}}"
+  printf 'AWS_ACCESS_KEY_ID=%s\nAWS_SECRET_ACCESS_KEY=%s\nAWS_EC2_METADATA_DISABLED=true\nAWS_ENDPOINT_URL_S3=%s\n' "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" "$endpoint"
+
+minio-put file key="":
+  #!/usr/bin/env bash
+  set -euo pipefail
+  test -f {{MINIO_SECRET_ENV}} || (echo "Missing {{MINIO_SECRET_ENV}}; run: just rs" >&2; exit 1)
+  set -a
+  . {{MINIO_SECRET_ENV}}
+  set +a
+  src="{{file}}"
+  key="{{key}}"
+  if [ -z "$key" ]; then
+    key="$(basename "$src")"
+  fi
+  docker run --rm --network mybridge --entrypoint /bin/sh --env-file {{MINIO_SECRET_ENV}} \
+    -e MINIO_OBJECT_KEY="$key" \
+    -v "$(realpath "$src"):/upload:ro" \
+    quay.io/minio/mc:latest \
+    -c 'mc alias set dev http://minio:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null && mc cp /upload "dev/$MINIO_BUCKET/$MINIO_OBJECT_KEY" >/dev/null'
+  url_key="$(python3 -c 'from urllib.parse import quote; import sys; print(quote(sys.argv[1]))' "$key")"
+  endpoint="${MINIO_ENDPOINT:-${MINIO_SERVER_URL:-{{MINIO_ENDPOINT}}}}"
+  printf '%s/%s/%s\n' "$endpoint" "$MINIO_BUCKET" "$url_key"
+
+minio-smoke:
+  #!/usr/bin/env bash
+  set -euo pipefail
+  test -f {{MINIO_SECRET_ENV}} || (echo "Missing {{MINIO_SECRET_ENV}}; run: just rs" >&2; exit 1)
+  set -a
+  . {{MINIO_SECRET_ENV}}
+  set +a
+  {{COMPOSE}} up -d minio minio-init
+  tmp="$(mktemp)"
+  trap 'rm -f "$tmp"' EXIT
+  printf 'minio smoke %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$tmp"
+  key=".smoke/minio.txt"
+  docker run --rm --network mybridge --entrypoint /bin/sh --env-file {{MINIO_SECRET_ENV}} \
+    -e MINIO_OBJECT_KEY="$key" \
+    -v "$tmp:/upload:ro" \
+    quay.io/minio/mc:latest \
+    -c 'mc alias set dev http://minio:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null && mc cp /upload "dev/$MINIO_BUCKET/$MINIO_OBJECT_KEY" >/dev/null'
+  endpoint="${MINIO_ENDPOINT:-${MINIO_SERVER_URL:-{{MINIO_ENDPOINT}}}}"
+  curl -fsS "$endpoint/$MINIO_BUCKET/.smoke/minio.txt"
+
+
+# ── Unsloth Studio patched UI ───────────────────────────────────────
+unsloth-studio-up:
+  {{COMPOSE}} up -d unsloth-studio
+
+unsloth-studio-logs:
+  {{COMPOSE}} logs -f unsloth-studio
+
+unsloth-studio-smoke:
+  curl -fsS http://127.0.0.1:${UNSLOTH_STUDIO_PORT:-8892}/api/health | python3 -m json.tool
 
 # ── Speaches-specific (no generic compose equivalent) ────────────────
 # Preload the default whisper model (downloads weights if not cached).
@@ -143,6 +242,36 @@ bifrost-test-pin model="openrouter/deepseek/deepseek-v4-flash" provider="wafer":
     -d '{"model":"{{model}}","messages":[{"role":"user","content":"Reply with exactly: PIN_OK"}],"max_tokens":16,"extra_params":{"provider":{"only":["{{provider}}"],"allow_fallbacks":false}}}' \
     | python3 -c 'import sys,json; d=json.load(sys.stdin); print((d["choices"][0]["message"]["content"].strip()+" | resolved="+str(d.get("model"))) if d.get("choices") else "ERR "+str(d.get("status_code"))+" "+json.dumps(d.get("error",{})))'
 
+# ── codex-oauth (ChatGPT/Codex subscription -> Bifrost `codex` provider) ─────
+# One-time auth: log a DEDICATED Codex session into secrets/codex-oauth/auth.json
+# (kept separate from the host's ~/.codex so refresh tokens never contend).
+# --device-auth prints a code + URL you open on any device — no localhost callback,
+# so it works on this headless box without SSH port-forwarding.
+codex-oauth-login:
+  mkdir -p {{SECRETS_DIR}}/codex-oauth
+  CODEX_HOME="$(pwd)/{{SECRETS_DIR}}/codex-oauth" codex login --device-auth
+  @echo "Wrote {{SECRETS_DIR}}/codex-oauth/auth.json — now: just up --build codex-oauth"
+
+# Build + (re)start the proxy, then confirm it can list account models (proves auth).
+codex-oauth-up:
+  {{COMPOSE}} up -d --build codex-oauth
+
+codex-oauth-logs:
+  {{COMPOSE}} logs -f codex-oauth
+
+# Verify the proxy is authed: list the Codex models your subscription exposes.
+codex-oauth-models:
+  curl -fsS --max-time 30 http://127.0.0.1:{{env('CODEX_OAUTH_PORT', '10531')}}/v1/models \
+    | python3 -c 'import sys,json; d=json.load(sys.stdin); print("\n".join("- "+m["id"] for m in d.get("data",[]))) or "no models (check auth)"'
+
+# End-to-end smoke test: call the subscription through Bifrost's `codex` provider.
+# Usage: just codex-oauth-test [model]
+codex-oauth-test model="codex/gpt-5.5":
+  curl -fsS --max-time 120 {{BIFROST_URL}}/openai/v1/chat/completions \
+    -H 'Content-Type: application/json' \
+    -d '{"model":"{{model}}","messages":[{"role":"user","content":"Reply with exactly: CODEX_OK"}],"max_tokens":20}' \
+    | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d["choices"][0]["message"]["content"].strip() if d.get("choices") else "ERR "+str(d.get("status_code"))+" "+json.dumps(d.get("error",{})))'
+
 # Sync declarative OpenRouter presets (config/openrouter-presets.json) to the
 # OpenRouter account. Presets bake provider routing server-side, so they survive
 # Bifrost (which strips the request-body `provider` field) — this is how we pin
@@ -181,14 +310,6 @@ bifrost-test-search model="nvidia/meta/llama-3.1-8b-instruct" *query="What is th
     -H 'x-bf-mcp-include-clients: mcpproxy' \
     -d '{"model":"{{model}}","messages":[{"role":"user","content":"Use the web_search tool, then: {{query}}"}],"max_tokens":400}' \
     | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d["choices"][0]["message"].get("content") if d.get("choices") else "ERR "+json.dumps(d.get("error",{})))'
-
-# Wipe Bifrost runtime state (config.db + logs.db). Forces a clean re-seed from
-# config/bifrost.config.json on next start. Does NOT touch the config file itself.
-bifrost-reset:
-  {{COMPOSE}} stop bifrost
-  rm -rf ./volumes/bifrost/*.db ./volumes/bifrost/*.db-*
-  {{COMPOSE}} up -d bifrost
-  @echo "bifrost reset — re-seeded from config/bifrost.config.json"
 
 # ── MCPProxy shared MCP gateway ─────────────────────────────────────
 # Keep the Compose project name stable when running from an isolated worktree.
