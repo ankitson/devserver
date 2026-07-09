@@ -293,16 +293,19 @@ services:
       - CODEX_SESSIONS_DIR=/agents/codex
       - GEMINI_DIR=/agents/gemini
       - HERMES_SESSIONS_DIR=/agents/hermes
+      - OPENCLAW_DIR=/agents/openclaw
       - PI_DIR=/agents/pi
       - AGENTSVIEW_TELEMETRY_ENABLED=0
     volumes:
       - ./volumes/agentsview:/data                       # SQLite DB (gitignored)
+      - ./volumes/agentsview-sources:/agent-sources:ro   # Machine-tagged remote transcript mirrors
       - ${HOME}/.claude/projects:/agents/claude:ro
       - ${HOME}/.local/share/opencode:/agents/opencode:ro
       - ${HOME}/.codex/sessions:/agents/codex:ro
       - ${HOME}/.gemini:/agents/gemini:ro
       - ${HOME}/.pi/agent/sessions:/agents/pi:ro
       - ${HOME}/hroot/devserver/volumes/hermes/sessions:/agents/hermes:ro
+      - ${HOME}/hroot/devserver/volumes/openclaw/agents:/agents/openclaw:ro
 
   # ── Phoenix: OTLP trace viewer for Azimuth workflow and agent runs ─────────
   # Canonical Azimuth traces are OTLP JSON files. Phoenix gives us a standard

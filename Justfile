@@ -50,6 +50,10 @@ logs *args:
 build *args:
   {{COMPOSE}} build {{args}}
 
+# Pull remote agent transcripts into AgentsView and tag them by machine.
+agentsview-sync *args:
+  uv run bin/agentsview-sync-sources.py {{args}}
+
 # Pull latest image(s) and recreate. --no-deps keeps dependent services running.
 # Use this for registry-backed services with `image:` only.
 upgrade *services:
