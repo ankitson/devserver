@@ -450,7 +450,7 @@ services:
     ports:
       - "127.0.0.1:8800:8000"             # local debug only; service-to-service via hostname
     volumes:
-      - speaches_hf_cache:/home/ubuntu/.cache/huggingface   # persist downloaded whisper weights
+      - /mnt/store-ext4/models/hf-cache:/home/ubuntu/.cache/huggingface   # persist downloaded whisper weights
     shm_size: 1g
     deploy:
       resources:
@@ -464,8 +464,9 @@ volumes:
   agent_devbox_home:
   agent_sandbox_home:
   agent_browser_home:
-  speaches_hf_cache:
 networks:
   default:
     name: mybridge
+    external: true
+  mybridge:
     external: true
