@@ -58,6 +58,8 @@ services:
     networks: [default]
     env_file:
       - ./secrets/pipeline-dagster.env
+      - path: ./config/pipeline-dagster.local.env
+        required: false
     environment:
       # Path inside the container of the bind-mounted landing_zone below.
       # Set here (in addition to the .env.tmpl) so a stale rendered .env

@@ -2,6 +2,7 @@
 volumes/
 secrets/
 .env
+*.local.env
 logs/*
 !logs/.gitkeep
 
