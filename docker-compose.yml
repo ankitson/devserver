@@ -473,6 +473,40 @@ services:
       timeout: 5s
       retries: 3
 
+
+  # ── Unsloth Studio: patched web UI pointed at Bifrost ─────────────────
+  # This is a UI/proxy Studio instance only; Bifrost already routes model calls
+  # to the Windows Unsloth backend. Patched source lives in /projects/code/unsloth.
+  unsloth-studio:
+    image: python:3.12-slim
+    container_name: unsloth-studio
+    hostname: unsloth-studio
+    user: "1000:1000"
+    restart: unless-stopped
+    depends_on:
+      - bifrost
+    entrypoint: ["/bin/bash", "/entrypoint/unsloth-studio-entrypoint.sh"]
+    env_file:
+      - ./secrets/unsloth-studio.env
+      - ./secrets/mcpproxy.env
+      - ./secrets/unsloth-bifrost.env
+    environment:
+      - HOME=/data/home
+      - UNSLOTH_STUDIO_HOME=/data/home
+      - UNSLOTH_STUDIO_PORT=8892
+      - UNSLOTH_BIFROST_BASE_URL=http://bifrost:8080/openai/v1
+      - UNSLOTH_MCP_PROXY_URL=http://172.19.0.1:3130/mcp/call
+      - UNSLOTH_MCP_PROXY_DISPLAY_NAME=MCPProxy Search
+      - UNSLOTH_STUDIO_ALLOW_STDIO_MCP=0
+      - HF_HOME=/data/cache/huggingface
+      - XDG_CACHE_HOME=/data/cache
+    volumes:
+      - /home/ankit/hroot/projects/code/unsloth:/src:rw
+      - ./volumes/unsloth-studio:/data:rw
+      - ./scripts/unsloth-studio-entrypoint.sh:/entrypoint/unsloth-studio-entrypoint.sh:ro
+    ports:
+      - "127.0.0.1:${UNSLOTH_STUDIO_PORT:-8892}:8892"
+
   # ── Speaches: faster-whisper STT server, OpenAI-compatible /v1/audio/transcriptions ─
   # Internal-only (no LAN port) — reached via mybridge from openclaw / hermes / litellm.
   # Default WHISPER__MODEL is what `model=""` requests resolve to; clients can override
