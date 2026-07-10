@@ -571,9 +571,6 @@ services:
       - ./scripts/open-webui-entrypoint.sh:/app/backend/entrypoint.sh:ro  # MCP proxy seed
     command: bash /app/backend/entrypoint.sh
     environment:
-      # ── Persistence: force env vars to always win over WebUI database ──
-      - ENABLE_PERSISTENT_CONFIG=false
-
       # ── MCP tool server (mcpproxy) ──
       - MCPPROXY_URL=http://172.19.0.1:3130/mcp
       - MCPPROXY_DISPLAY_NAME=MCPProxy Search
@@ -588,24 +585,28 @@ services:
       - WEBUI_URL=https://chat.home.ankitson.com
 
       # ── LLM backend (all providers via bifrost) ──
-      - OPENAI_API_BASE_URL=http://bifrost:8080/openai/v1
+      # NOTE: ENABLE_PERSISTENT_CONFIG is on, so the effective connection URL +
+      # per-connection headers live in the OWUI config store (webui.db:
+      # openai.api_base_urls must be the /v1 standard route, and openai.api_configs
+      # carries x-bf-passthrough-extra-params so unknown params reach the model).
+      - OPENAI_API_BASE_URL=http://bifrost:8080/v1
       - BYPASS_MODEL_ACCESS_CONTROL=true
       - ENABLE_CUSTOM_MODEL_FALLBACK=true
-      - DEFAULT_PINNED_MODELS=openrouter/anthropic/claude-sonnet-4-20250514,openrouter/openai/gpt-4o,openrouter/google/gemini-2.5-flash,openrouter/meta-llama/llama-4-maverick,unsloth/unsloth/gemma-4-27b-it-bnb-4bit
+      #- DEFAULT_PINNED_MODELS=openrouter/anthropic/claude-sonnet-4-20250514,openrouter/openai/gpt-4o,openrouter/google/gemini-2.5-flash,openrouter/meta-llama/llama-4-maverick,unsloth/unsloth/gemma-4-27b-it-bnb-4bit
 
       # ── Speech: STT + TTS via bifrost ──
       - AUDIO_STT_ENGINE=openai
-      - AUDIO_STT_OPENAI_API_BASE_URL=http://bifrost:8080/openai/v1
+      - AUDIO_STT_OPENAI_API_BASE_URL=http://bifrost:8080/v1
       - AUDIO_STT_MODEL=speaches/deepdml/faster-whisper-large-v3-turbo-ct2
       - AUDIO_TTS_ENGINE=openai
-      - AUDIO_TTS_OPENAI_API_BASE_URL=http://bifrost:8080/openai/v1
+      - AUDIO_TTS_OPENAI_API_BASE_URL=http://bifrost:8080/v1
       - AUDIO_TTS_MODEL=speaches/speaches-ai/Kokoro-82M-v1.0-ONNX
       - AUDIO_TTS_VOICE=af_heart
       - ENABLE_FORCED_TTS_AUTO_PLAY=true
 
       # ── Embeddings / RAG ──
       - RAG_EMBEDDING_ENGINE=openai
-      - RAG_EMBEDDING_OPENAI_BASE_URL=http://bifrost:8080/openai/v1
+      - RAG_EMBEDDING_OPENAI_BASE_URL=http://bifrost:8080/v1
       - RAG_EMBEDDING_MODEL=ollama/nomic-embed-text
       - ENABLE_RAG_LOCAL_WEB_FETCH=true
 
@@ -618,7 +619,7 @@ services:
 
       # ── Image Generation via bifrost (openrouter models) ──
       - IMAGE_GENERATION_ENGINE=openai
-      - IMAGE_GENERATION_OPENAI_API_BASE_URL=http://bifrost:8080/openai/v1
+      - IMAGE_GENERATION_OPENAI_API_BASE_URL=http://bifrost:8080/v1
       - IMAGE_GENERATION_MODEL=openrouter/black-forest-labs/flux.2-klein-4b
       # ComfyUI (native engine, not through bifrost). Uncomment when comfy.win.ankitson.com is up:
       # - IMAGE_GENERATION_ENGINE=comfyui
@@ -716,11 +717,45 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
+  # ── Omnigent: open-source meta-harness for AI agents ─────────────────
+  # Multi-agent orchestrator: Claude Code, Codex, Cursor, Pi, and custom
+  # agents in a shared session. SQLite backend (no Postgres needed for
+  # single-instance). Runners connect from laptops over WebSocket tunnel.
+  # Web UI at http://127.0.0.1:6767.
+  # Image: ghcr.io/omnigent-ai/omnigent-server (private — need docker login ghcr.io).
+  # Docs: https://github.com/omnigent-ai/omnigent
+  omnigent:
+    image: ${OMNIGENT_IMAGE:-ghcr.io/omnigent-ai/omnigent-server}:${OMNIGENT_IMAGE_TAG:-latest}
+    container_name: omnigent
+    hostname: omnigent
+    restart: unless-stopped
+    env_file:
+      - ./secrets/omnigent.env
+    environment:
+      # Override env_file defaults with compose-level settings.
+      # DATABASE_URL and ARTIFACT_DIR come from the env file.
+      # Auth: single-user local mode (no login, shared identity for
+      # all requests behind Caddy/Tailscale). Flip OMNIGENT_AUTH_ENABLED=1
+      # in secrets/omnigent.env for accounts or OIDC mode.
+      - OMNIGENT_CONFIG=/data/omnigent.yaml
+    volumes:
+      - omnigent_data:/data
+      - ./config/omnigent.yaml:/data/omnigent.yaml:ro
+    ports:
+      - "127.0.0.1:${OMNIGENT_PORT:-6767}:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
 volumes:
   mcpproxy_data:
   agent_devbox_home:
   agent_sandbox_home:
   agent_browser_home:
+  omnigent_data:
 networks:
   default:
     name: mybridge
