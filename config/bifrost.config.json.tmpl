@@ -86,6 +86,16 @@
     },
     {
       "enabled": true,
+      "name": "normalizer",
+      "path": "/app/plugins/normalizer.so",
+      "version": 1,
+      "config": {
+        "normalize_reasoning_content": true,
+        "providers": ["unsloth", "lmstudio"]
+      }
+    },
+    {
+      "enabled": true,
       "name": "embedding-task-prefix",
       "path": "/app/plugins/embedding-task-prefix.so",
       "version": 1,
@@ -265,6 +275,36 @@
       ],
       "network_config": {
         "base_url": "https://unsloth.win.ankitson.com",
+        "default_request_timeout_in_seconds": 600,
+        "stream_idle_timeout_in_seconds": 300,
+        "allow_private_network": true
+      },
+      "custom_provider_config": {
+        "base_provider_type": "openai",
+        "allowed_requests": {
+          "list_models": true,
+          "chat_completion": true,
+          "chat_completion_stream": true,
+          "text_completion": true,
+          "text_completion_stream": true,
+          "responses": true,
+          "responses_stream": true,
+          "embedding": true
+        }
+      }
+    },
+
+    "lmstudio": {
+      "keys": [
+        {
+          "name": "lmstudio-noauth",
+          "value": "lmstudio-noauth",
+          "models": ["*"],
+          "weight": 1.0
+        }
+      ],
+      "network_config": {
+        "base_url": "https://lmstudio.win.ankitson.com",
         "default_request_timeout_in_seconds": 600,
         "stream_idle_timeout_in_seconds": 300,
         "allow_private_network": true
