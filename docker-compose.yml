@@ -597,7 +597,7 @@ services:
       # ── Speech: STT + TTS via bifrost ──
       - AUDIO_STT_ENGINE=openai
       - AUDIO_STT_OPENAI_API_BASE_URL=http://bifrost:8080/v1
-      - AUDIO_STT_MODEL=speaches/deepdml/faster-whisper-large-v3-turbo-ct2
+      - AUDIO_STT_MODEL=parakeet-asr/nemo-parakeet-tdt-0.6b-v2  # was speaches whisper-turbo; parakeet v2: 5.5x faster, 0% vs 12% eval WER
       - AUDIO_TTS_ENGINE=openai
       - AUDIO_TTS_OPENAI_API_BASE_URL=http://bifrost:8080/v1
       - AUDIO_TTS_MODEL=speaches/speaches-ai/Kokoro-82M-v1.0-ONNX
@@ -690,6 +690,46 @@ services:
     networks:
       - mybridge
 
+  # ── parakeet-asr: fastest local STT (autoresearch 2026-07-11) ────────────────
+  # onnx-asr + nvidia/parakeet-tdt-0.6b-v2 (ONNX Runtime CUDA): ~105ms warm,
+  # 0.00% WER on the audio-models eval set, ~2.5GB VRAM. Supersedes both
+  # speaches Whisper STT (5.5x slower, worse WER) and nemotron-asr for English.
+  # OpenAI-compatible POST /v1/audio/transcriptions; Bifrost provider `parakeet-asr`.
+  # Internal-only; mybridge as http://parakeet-asr:8000. Model weights from the
+  # shared HF cache (istupakov/parakeet-tdt-0.6b-v2-onnx, ~2.4GB, pre-seeded).
+  parakeet-asr:
+    build:
+      context: /projects/audio-models
+      dockerfile: Dockerfile.parakeet
+    image: ankit/parakeet-asr:latest
+    container_name: parakeet-asr
+    hostname: parakeet-asr
+    restart: unless-stopped
+    environment:
+      - ASR_MODEL=nemo-parakeet-tdt-0.6b-v2
+      - ASR_DEVICE=cuda
+      - HF_HOME=/hf-cache
+    volumes:
+      - /mnt/store-ext4/models/hf-cache:/hf-cache
+    ports:
+      - "127.0.0.1:${PARAKEET_ASR_PORT:-8811}:8000"
+    shm_size: 1g
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 180s
+    networks:
+      - mybridge
+
   # ── Speaches: faster-whisper STT server, OpenAI-compatible /v1/audio/transcriptions ─
   # Internal-only (no LAN port) — reached via mybridge from openclaw / hermes / litellm.
   # Default WHISPER__MODEL is what `model=""` requests resolve to; clients can override
@@ -738,6 +778,9 @@ services:
       # all requests behind Caddy/Tailscale). Flip OMNIGENT_AUTH_ENABLED=1
       # in secrets/omnigent.env for accounts or OIDC mode.
       - OMNIGENT_CONFIG=/data/omnigent.yaml
+      # Allow the Caddy-proxied hostname as a trusted Origin for multipart
+      # uploads (the local-mode loopback check rejects non-loopback origins).
+      - OMNIGENT_WS_ALLOWED_ORIGINS=https://omni.dev.ankitson.com
     volumes:
       - omnigent_data:/data
       - ./config/omnigent.yaml:/data/omnigent.yaml:ro

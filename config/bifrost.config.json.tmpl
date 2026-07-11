@@ -43,6 +43,27 @@
           "exa__web_fetch_exa"
         ],
         "allow_on_all_virtual_keys": false
+      },
+      {
+        "name": "mcpproxy_search",
+        "connection_type": "http",
+        "connection_string": "http://172.19.0.1:3130/mcp/all",
+        "is_ping_available": false,
+        "auth_type": "headers",
+        "headers": {
+          "Authorization": "Bearer {{ op://clankers/mcpproxy-agents/password }}"
+        },
+        "tools_to_execute": [
+          "exa__web_search_exa",
+          "exa__web_search_advanced_exa",
+          "exa__web_fetch_exa"
+        ],
+        "tools_to_auto_execute": [
+          "exa__web_search_exa",
+          "exa__web_search_advanced_exa",
+          "exa__web_fetch_exa"
+        ],
+        "allow_on_all_virtual_keys": false
       }
     ]
   },
@@ -54,7 +75,7 @@
         "name": "Route GPT-5.x models to codex provider",
         "description": "Route unqualified gpt-5.x model requests to the codex OAuth proxy so they go through the ChatGPT/Codex subscription instead of hitting unrelated providers via wildcard fallback",
         "enabled": true,
-        "cel_expression": "model.startsWith('gpt-5.') && request_type in ['chat_completion', 'chat_completion_stream', 'responses', 'responses_stream']",
+        "cel_expression": "model.startsWith('gpt-')",
         "targets": [
           { "provider": "codex", "weight": 1.0 }
         ],
@@ -185,8 +206,13 @@
         "allowed_requests": {
           "list_models": true,
           "chat_completion": true,
-          "chat_completion_stream": true
+          "chat_completion_stream": true,
+          "responses": true,
+          "responses_stream": true
         }
+      },
+      "openai_config": {
+        "disable_store": true
       }
     },
 
@@ -404,6 +430,29 @@
       "network_config": {
         "base_url": "http://nemotron-asr:8000",
         "default_request_timeout_in_seconds": 300,
+        "allow_private_network": true
+      },
+      "custom_provider_config": {
+        "base_provider_type": "openai",
+        "allowed_requests": {
+          "list_models": true,
+          "transcription": true
+        }
+      }
+    },
+
+    "parakeet-asr": {
+      "keys": [
+        {
+          "name": "parakeet-noauth",
+          "value": "env.PARAKEET_API_KEY",
+          "models": ["*"],
+          "weight": 1.0
+        }
+      ],
+      "network_config": {
+        "base_url": "http://parakeet-asr:8000",
+        "default_request_timeout_in_seconds": 120,
         "allow_private_network": true
       },
       "custom_provider_config": {
