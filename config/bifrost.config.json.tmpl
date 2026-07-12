@@ -368,6 +368,29 @@
       }
     },
 
+    "local-tts": {
+      "keys": [
+        {
+          "name": "local-tts-noauth",
+          "value": "env.LOCALTTS_API_KEY",
+          "models": ["*"],
+          "weight": 1.0
+        }
+      ],
+      "network_config": {
+        "base_url": "http://local-tts:8000",
+        "default_request_timeout_in_seconds": 120,
+        "allow_private_network": true
+      },
+      "custom_provider_config": {
+        "base_provider_type": "openai",
+        "allowed_requests": {
+          "list_models": true,
+          "speech": true
+        }
+      }
+    },
+
     "speaches": {
       "keys": [
         {
