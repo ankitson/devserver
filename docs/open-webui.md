@@ -1,13 +1,14 @@
 # Open WebUI Configuration
 
-All settings are managed via env vars in `docker-compose.yml` with `ENABLE_PERSISTENT_CONFIG=false`
-so env vars always take precedence over the database.
+Defaults are declared in `docker-compose.yml`. Open WebUI persistent config is
+enabled, so existing admin audio settings in `volumes/open-webui/webui.db` take
+precedence and must be updated alongside deployment defaults.
 
 ## Env Vars
 
 | Feature | Env Var | Value |
 |---|---|---|
-| Persistence | `ENABLE_PERSISTENT_CONFIG` | `false` (env vars always win) |
+| Persistence | `ENABLE_PERSISTENT_CONFIG` | default (`true`) |
 | LLM API base | `OPENAI_API_BASE_URL` | `http://bifrost:8080/openai/v1` |
 | Model access | `BYPASS_MODEL_ACCESS_CONTROL` | `true` (show ALL providers) |
 | Model fallback | `ENABLE_CUSTOM_MODEL_FALLBACK` | `true` |
@@ -19,9 +20,10 @@ so env vars always take precedence over the database.
 | STT base URL | `AUDIO_STT_OPENAI_API_BASE_URL` | `http://bifrost:8080/openai/v1` |
 | STT model | `AUDIO_STT_MODEL` | `speaches/deepdml/faster-whisper-large-v3-turbo-ct2` |
 | TTS engine | `AUDIO_TTS_ENGINE` | `openai` |
-| TTS base URL | `AUDIO_TTS_OPENAI_API_BASE_URL` | `http://bifrost:8080/openai/v1` |
-| TTS model | `AUDIO_TTS_MODEL` | `speaches/speaches-ai/Kokoro-82M-v1.0-ONNX` |
-| TTS voice | `AUDIO_TTS_VOICE` | `af_heart` |
+| TTS base URL | `AUDIO_TTS_OPENAI_API_BASE_URL` | `http://chatterbox-tts:8000/v1` |
+| TTS model | `AUDIO_TTS_MODEL` | `chatterbox` |
+| TTS voice | `AUDIO_TTS_VOICE` | `Alice` |
+| Streaming PCM | `AUDIO_TTS_STREAMING_PCM` | `true` |
 | Auto-play TTS | `ENABLE_FORCED_TTS_AUTO_PLAY` | `true` |
 | Base models cache | `ENABLE_BASE_MODELS_CACHE` | `true` |
 | Embeddings engine | `RAG_EMBEDDING_ENGINE` | `openai` (via bifrost) |
@@ -47,7 +49,7 @@ so env vars always take precedence over the database.
 | Calendar | `ENABLE_CALENDAR` | `true` |
 | Automations | `ENABLE_AUTOMATIONS` | `true` |
 | WebUI URL | `WEBUI_URL` | `https://chat.ankitson.com` |
-| Version | (image) | `ghcr.io/open-webui/open-webui:main` (tracks latest) |
+| Version | (image) | `ankit/open-webui:0.10.2-pcm` (source revision `ecd48e2f7`) |
 
 ## Web / RAG Loader
 

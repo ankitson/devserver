@@ -470,3 +470,15 @@ gil-loop name:
 # Follow gilfoyle's gateway logs.
 gil-logs:
   {{COMPOSE}} logs -f openclaw
+
+# ── Open WebUI: pinned 0.10.2 source build with direct streaming PCM TTS ──
+OPEN_WEBUI_SOURCE := "/home/ankit/hroot/projects/external-repo/open-webui"
+
+open-webui-frontend:
+  cd {{OPEN_WEBUI_SOURCE}} && node_modules/.bin/vite build
+
+open-webui-image: open-webui-frontend
+  {{COMPOSE}} build open-webui
+
+open-webui-up: open-webui-image
+  {{COMPOSE}} up -d --no-deps open-webui

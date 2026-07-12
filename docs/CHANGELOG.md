@@ -3,6 +3,23 @@
 Top-level changelog. Sub-projects keep their own detailed changelogs; link them
 here.
 
+## 2026-07-12
+
+### Open WebUI: stream Chatterbox PCM directly to Web Audio
+
+- Replaced the moving `ghcr.io/open-webui/open-webui:main` deployment with a
+  locally built 0.10.2 source fork and a digest-pinned derived image.
+- Added an authenticated, opt-in streaming PCM backend relay and a shared Web
+  Audio queue used by Voice mode and Read Aloud.
+- Scoped saved voices by TTS engine and model in reviewable frontend source.
+- Routed only TTS directly to Chatterbox; left all Bifrost-backed services and
+  routing unchanged.
+- Removed the compiled-bundle voice patch and mounted audio-router patch from
+  the running service wiring.
+- Added focused backend/frontend tests and Just recipes for rebuilding and
+  deploying the source image.
+
+
 ## Data pipelines
 Garmin / banking / Playnite / AoE4-replay / X-bookmarks pipelines on Dagster
 (+ DBOS / Restate experiments). Full detail:

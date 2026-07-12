@@ -1,3 +1,44 @@
+# Devserver Integration Notes
+
+## 2026-07-12
+
+### Open WebUI direct streaming PCM
+
+#### Decision
+
+- Open WebUI is pinned to upstream source revision
+  `ecd48e2f718220a6400ecf49eafd4867a38feb10` (0.10.2) in
+  `/home/ankit/hroot/projects/external-repo/open-webui`.
+- Chat, STT, embeddings, and image generation remain on Bifrost. Only TTS now
+  targets `http://chatterbox-tts:8000/v1` directly.
+- The authenticated `/api/v1/audio/speech/stream` route forces raw streaming
+  PCM (`s16le`, mono) and relays chunks without cache, buffering, or transcoding.
+- Read Aloud sends the whole response unsplit. Voice mode keeps punctuation
+  segmentation. Both use the same Web Audio PCM scheduler with a 150 ms jitter
+  target and four seconds of scheduled-ahead backpressure.
+- A saved user voice is reused only while its saved engine and model still match
+  the active admin engine and model.
+
+#### Deployment
+
+- `ankit/open-webui:0.10.2-pcm` derives from digest-pinned upstream 0.10.2 and
+  replaces only `/app/build` plus the three reviewed backend files. This avoids
+  a multi-gigabyte Python/CUDA image rebuild.
+- Persistent audio config was backed up to
+  `volumes/open-webui/webui.db.before-direct-pcm-20260712.bak` before changing
+  the stored TTS URL/model/voice.
+- The old compiled frontend voice patch and mounted audio router are no longer
+  part of the running container. Their untracked source files remain on disk for
+  provenance and rollback.
+
+#### Verification
+
+- Backend PCM tests: 2 passed; frontend PCM conversion tests: 2 passed.
+- The production Vite build completed and the derived Compose image built.
+- Live authenticated relay returned HTTP 200 with 24 kHz mono `s16le` headers
+  and 114,720 streamed bytes; the container is healthy.
+- Headless Chromium loaded the deployed sign-in UI with no page errors.
+
 # Audio Stack Integration Notes
 
 ## Overview
