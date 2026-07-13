@@ -5,5 +5,6 @@ FROM ghcr.io/open-webui/open-webui@sha256:a26effeb220e132482bf7e0560b3404843e7bc
 
 COPY build /app/build
 COPY backend/open_webui/config.py /app/backend/open_webui/config.py
+COPY backend/open_webui/utils/middleware.py /app/backend/open_webui/utils/middleware.py
 COPY backend/open_webui/main.py /app/backend/open_webui/main.py
 COPY backend/open_webui/routers/audio.py /app/backend/open_webui/routers/audio.py
