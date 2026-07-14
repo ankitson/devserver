@@ -3,6 +3,19 @@
 Top-level changelog. Sub-projects keep their own detailed changelogs; link them
 here.
 
+## 2026-07-14
+
+### Bifrost: disable global compat parameter dropping
+
+- Set `client.compat.should_drop_params: false` in the rendered Bifrost config
+  so Bifrost stops silently deleting request fields absent from model-catalog
+  allowlists.
+- This is global for the Bifrost instance, not codex-specific; configured
+  providers such as `openrouter`, `anthropic`, `openai`, `codex`, `nvidia`,
+  `deepseek`, `nanogpt`, `unsloth`, `lmstudio`, `ollama`, `speaches`,
+  `audiocpp`, `nemotron-asr`, and `parakeet-asr` may now receive parameters
+  Bifrost previously dropped.
+
 ## 2026-07-12
 
 ### Open WebUI: stream Chatterbox PCM directly to Web Audio
