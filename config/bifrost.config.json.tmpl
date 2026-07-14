@@ -3,7 +3,13 @@
 
   "client": {
     "drop_excess_requests": false,
-    "prometheus_labels": ["model", "provider"]
+    "prometheus_labels": ["model", "provider"],
+    "compat": {
+      "convert_text_to_chat": true,
+      "convert_chat_to_responses": true,
+      "should_drop_params": false,
+      "should_convert_params": true
+    }
   },
 
   "config_store": {
